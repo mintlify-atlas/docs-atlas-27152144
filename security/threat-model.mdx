@@ -1,0 +1,312 @@
+---
+title: Threat Model
+description: What gitGost protects against, attack vectors considered, and explicit security assumptions
+---
+
+gitGost operates at a **serious / production** security level, designed for contributors seeking anonymity when creating PRs on GitHub. This document details what gitGost protects against and—crucially—what it does **not** protect.
+
+## Scope
+
+This threat model covers:
+
+- Push flow to gitGost and creation of anonymous PRs on GitHub
+- Metadata stripping and identity separation
+- Abuse prevention and rate limiting
+
+**Out of scope:**
+- Security of the user's device or local network
+- Supply chain attacks on dependencies
+- Platform-level compromises (GitHub, operator infrastructure)
+
+## Actors
+
+<AccordionGroup>
+  <Accordion title="GitHub" icon="github">
+    Platform hosting the target repositories. Can see the source IP of PR creation (from gitGost server), timing data, and all public PR content.
+  </Accordion>
+  
+  <Accordion title="gitGost Operator" icon="server">
+    Runs the instance that receives pushes and creates PRs. Has access to:
+    - Server logs (aggregated, without IP if configured properly)
+    - Push timing and volume patterns
+    - Temporary git objects during processing
+    
+    **Trust assumption:** The operator does not add hidden telemetry or keep detailed logs.
+  </Accordion>
+  
+  <Accordion title="External Attacker" icon="shield-halved">
+    Third party without control of gitGost server or repository. May:
+    - Observe network traffic
+    - Monitor public repositories and PR activity
+    - Attempt abuse or denial-of-service
+  </Accordion>
+  
+  <Accordion title="Malicious Maintainer" icon="user-secret">
+    Maintains the target repo or collaborates with it to deanonymize contributions through:
+    - Code style analysis
+    - Temporal correlation with contributor activity
+    - Diff fingerprinting
+  </Accordion>
+</AccordionGroup>
+
+## Minimal Assumptions
+
+<Warning>
+  gitGost's anonymity guarantees depend on these assumptions:
+</Warning>
+
+1. **Network privacy**: User connects via a trustworthy VPN or Tor
+2. **Clean machine**: User's device is free of malware or monitoring software
+3. **Honest operator**: Operator protects server logs and does not add telemetry
+4. **Public repositories**: Target repositories are public (private repos expose more metadata)
+
+## Relevant Attack Vectors
+
+### Time Correlation
+
+**Attack:** Linking push timestamp with user activity patterns.
+
+**Example:** If you push to gitGost at 3:47 AM and the PR appears at 3:47 AM, an observer monitoring both your activity and the target repo could correlate them.
+
+**Mitigation:** gitGost processes pushes immediately, but operators can add queuing/jitter. Users should vary push timing.
+
+### Diff Fingerprinting
+
+**Attack:** Identifying author by code patterns, testing style, or comment wording.
+
+**Example:** Unique variable naming conventions, specific error handling patterns, or characteristic test structures.
+
+**Mitigation:** None technical—users must consciously vary their coding style.
+
+### PR Size & Shape
+
+**Attack:** Using commit size, file count, or change patterns to infer author.
+
+**Example:** A 3-line typo fix in a low-activity project may be uniquely attributable.
+
+**Mitigation:** gitGost enforces size limits (see [Rate Limits](/security/rate-limits)), but cannot prevent small PRs from being distinctive.
+
+### Commit Style
+
+**Attack:** Stylometry in commit messages—language patterns, emoji usage, formatting preferences.
+
+**Example:** Consistent use of "feat:" prefixes or specific phrasing like "this commit does X."
+
+**Mitigation:** Users should write neutral, generic commit messages.
+
+## What gitGost Mitigates
+
+<Check>**Separation of GitHub identity**</Check>
+
+PRs come from `@gitgost-anonymous`, not your account. No link to your GitHub profile.
+
+<Check>**Metadata stripping**</Check>
+
+Author name, email, and commit timestamps are normalized before pushing:
+
+```go
+// From internal/git/receive.go
+func anonymizeCommit(commit *object.Commit) *object.Commit {
+    return &object.Commit{
+        Author: object.Signature{
+            Name:  "Anonymous Contributor",
+            Email: "anonymous@gitgost.local",
+            When:  time.Unix(0, 0), // epoch zero
+        },
+        Committer: object.Signature{
+            Name:  "Anonymous Contributor",
+            Email: "anonymous@gitgost.local",
+            When:  time.Unix(0, 0),
+        },
+        Message: commit.Message,
+        Tree:    commit.TreeHash,
+        Parents: commit.ParentHashes,
+    }
+}
+```
+
+<Check>**Repository and commit size limits**</Check>
+
+Enforced to reduce anomalous signals and prevent abuse:
+
+- **100 MB** max push size (`router.go:49`)
+- Repository size validation
+- Ref name validation to prevent path traversal
+
+<Check>**Reduced direct correlation**</Check>
+
+Public PR timestamp reflects gitGost processing time, not your local work time. Operators can add buffering/queuing for additional delay.
+
+## What gitGost Does NOT Mitigate
+
+<Warning>
+  These are **critical limitations**. gitGost is not a silver bullet.
+</Warning>
+
+### Network / IP Exposure
+
+**Problem:** GitHub and the operator can see the source IP if you don't use VPN/Tor.
+
+**Impact:** Direct link from your network to the anonymous PR.
+
+**Solution:** **Always use Tor or a trustworthy VPN** when pushing to gitGost.
+
+### Fine-Grained Time Correlation
+
+**Problem:** An observer who sees your push and the near-simultaneous PR can link them if:
+- Service load is low (few concurrent users)
+- No additional jitter is added by the operator
+
+**Impact:** Temporal fingerprinting in low-traffic scenarios.
+
+**Solution:** Consider batching pushes or adding local delays if timing correlation is a high-priority threat.
+
+### Diff Fingerprinting
+
+**Problem:** Code style, wording, test patterns, and comments can reveal authorship.
+
+**Examples:**
+- Unique variable naming (e.g., always using `ctx` vs `context`)
+- Specific error messages
+- Consistent use of certain libraries or patterns
+
+**Impact:** Experienced maintainers or automated tools can attribute code to known contributors.
+
+**Solution:** Consciously vary your coding style. Use generic patterns. Avoid personal idioms.
+
+### PR Size in Low-Activity Projects
+
+**Problem:** Small or unique PRs can be attributable in repos with low activity.
+
+**Example:** A 1-line fix in a repo that receives 3 PRs/year is highly distinctive.
+
+**Impact:** Easy correlation with your public activity or discussions.
+
+**Solution:** gitGost is best suited for active projects with regular contributions.
+
+### Commit Message Stylometry
+
+**Problem:** Language patterns, emoji use, and formatting are identifiable.
+
+**Examples:**
+- Always using imperative mood ("Add feature" vs "Added feature")
+- Consistent emoji prefixes (🔧, ✨)
+- Specific phrasing patterns
+
+**Impact:** Commit messages can be fingerprinted even when author metadata is stripped.
+
+**Solution:** Write neutral, generic commit messages. Avoid personal style markers.
+
+### Private Repositories
+
+**Problem:** Private repos expose more metadata to the operator.
+
+**Impact:** Operator knows which private repos you're contributing to.
+
+**Solution:** gitGost is designed for **public repositories only**.
+
+### Hostile Operators
+
+**Problem:** If the operator keeps detailed logs or adds traces, they can identify you.
+
+**Impact:** Complete deanonymization.
+
+**Solution:** Run your own instance or use a trusted operator with a clear privacy policy.
+
+### Platform-Level Attacks
+
+**Problem:** Compromises in GitHub, MITM attacks, or operator infrastructure breaches are out of scope.
+
+**Impact:** Arbitrary deanonymization.
+
+**Solution:** These are inherent limits of any hosted service. If this threat model is unacceptable, use cryptographic signing and self-host.
+
+## Recommended Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Tor or VPN" icon="shield">
+    **Always** connect via Tor or a trustworthy VPN before pushing.
+  </Card>
+  
+  <Card title="Vary Commit Style" icon="pen">
+    Write neutral messages. Avoid personal idioms, emoji, or consistent patterns.
+  </Card>
+  
+  <Card title="Batch Pushes" icon="clock">
+    Consider batching or adding delays if time-correlation risk is high.
+  </Card>
+  
+  <Card title="Avoid Internal References" icon="ban">
+    Never mention personal projects, internal tools, or identifiable context in diffs.
+  </Card>
+</CardGroup>
+
+## Legal Risk Surface
+
+### Operator Risks
+
+The gitGost operator acts as a technical intermediary. Relevant exposures:
+
+<Warning>
+  **Intermediary liability** (EU DSA / MX LFDA)
+</Warning>
+
+Operators benefit from safe harbor **only if** they:
+- Maintain an accessible infringement reporting channel
+- Respond to valid notices within a reasonable timeframe
+
+Running gitGost without a functioning DMCA/IP complaint process may void this protection.
+
+<Note>
+  **No content review**: gitGost does not review submissions before forwarding, supporting safe harbor claims but not eliminating liability entirely.
+</Note>
+
+**Recommended:** Expose a contact address for IP/copyright complaints, document a response SLA, and implement hash-blocking upon receipt of valid notices.
+
+### Maintainer (Target Repository) Risks
+
+Maintainers who accept PRs via gitGost assume standard open-source contribution risk, plus:
+
+<Warning>
+  **No identity chain**: gitGost PRs have no verified identity. Submitter declarations (Terms of Submission) are good-faith, not verified CLAs.
+</Warning>
+
+**Not suitable for CLA-required projects**: Projects requiring identity-verified CLAs (Linux Foundation, Apache, Google, Mozilla) should **not** accept gitGost PRs without out-of-band identity verification.
+
+**Supply chain audits**: Anonymous PRs have no chain of custody. Projects subject to supply chain security requirements (SLSA, SBOM mandates, corporate policies) should reject anonymous contributions.
+
+**Recommended:** Projects accepting anonymous contributions can use the `anonymous-friendly` badge. Projects with strict CLA requirements should note in `CONTRIBUTING.md` that anonymous PRs are not accepted.
+
+## Maturity Statement
+
+gitGost provides **practical anonymity** for public PRs but **not perfect anonymity** against observers capable of:
+- Temporal correlation
+- Code style analysis
+- Network traffic analysis (if user doesn't use VPN/Tor)
+
+gitGost is explicitly **not suitable** for:
+- Contributions to projects requiring identity-verified CLAs
+- Formal supply chain provenance requirements
+- Environments where perfect anonymity against state-level adversaries is required
+
+Its intended use case is personal and small open-source projects that accept informal contributions.
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Privacy Guarantees" icon="lock" href="/security/privacy-guarantees">
+    What data is stored, retained, and exposed
+  </Card>
+  
+  <Card title="Anonymity Limits" icon="eye" href="/security/anonymity-limits">
+    When gitGost is NOT sufficient
+  </Card>
+  
+  <Card title="Rate Limits" icon="gauge" href="/security/rate-limits">
+    Abuse prevention and security measures
+  </Card>
+  
+  <Card title="Security Policy" icon="shield-check" href="/security/vulnerability-reporting">
+    How to report security issues
+  </Card>
+</CardGroup>

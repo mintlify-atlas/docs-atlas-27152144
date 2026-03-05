@@ -1,80 +1,416 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Make your first anonymous contribution in under 60 seconds
 ---
 
-## Get started in three steps
+# Quickstart Guide
 
-Get your documentation site running locally and make your first customization.
+Get started with gitGost in three simple steps. No accounts, no tokens, no configuration files—just add a Git remote and push.
 
-### Step 1: Set up your local environment
+## Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+All you need is Git installed on your machine. That's it.
+
+```bash
+git --version
+# Should output: git version 2.x.x or higher
+```
+
+## Your First Anonymous Contribution
+
+<Steps>
+  <Step title="Add gitGost as a remote">
+    Add gitGost as a remote to any repository you want to contribute to:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    ```bash
+    # Format: https://gitgost.leapcell.app/v1/gh/{owner}/{repo}
+    git remote add gost https://gitgost.leapcell.app/v1/gh/torvalds/linux
+    ```
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    Replace `torvalds/linux` with the actual owner and repository name.
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    <Tip>
+      The remote name `gost` is just a convention—you can use any name you like.
+    </Tip>
+  </Step>
+  
+  <Step title="Create your branch and commit">
+    Make your changes and commit them with a **detailed message**:
+    
+    ```bash
+    # Create a new branch
+    git checkout -b fix-readme-typo
+    
+    # Make your changes
+    echo "Fixed typo in README" > CHANGES.txt
+    
+    # Commit with a descriptive message
+    git commit -am "fix: correct spelling of 'receive' in README
+    
+    This commit fixes a grammatical error in the installation
+    instructions. The word 'recieve' should be 'receive'."
+    ```
+    
+    <Warning>
+      Your **commit message becomes the PR description**. Write detailed messages to provide context to maintainers while staying anonymous.
+    </Warning>
+  </Step>
+  
+  <Step title="Push through gitGost">
+    Push your branch to the gitGost remote:
+    
+    ```bash
+    git push gost fix-readme-typo:main
+    ```
+    
+    You'll see output like this:
+    
+    ```plaintext
+    remote: gitGost: Processing your anonymous contribution...
+    remote: gitGost: Commits anonymized successfully
+    remote: gitGost: Creating fork...
+    remote: gitGost: Fork ready at gitgost-anonymous/linux
+    remote: gitGost: Pushing to fork...
+    remote: gitGost: Branch 'gitgost-1709654321' created
+    remote: gitGost: Creating pull request...
+    remote: 
+    remote: ========================================
+    remote: SUCCESS! Pull Request Created
+    remote: ========================================
+    remote: 
+    remote: PR URL: https://github.com/torvalds/linux/pull/12345
+    remote: Author: @gitgost-anonymous
+    remote: Branch: gitgost-1709654321
+    remote: PR Hash: a3f8c1d2
+    remote: 
+    remote: Subscribe to PR notifications (no account needed):
+    remote:   https://ntfy.sh/gitgost-pr-a3f8c1d2
+    remote: 
+    remote: To update this PR on future pushes, use:
+    remote:   git push gost <branch>:main -o pr-hash=a3f8c1d2
+    remote: 
+    remote: Your identity has been anonymized.
+    remote: No trace to you remains in the commit history.
+    remote: 
+    remote: ========================================
+    ```
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## What Just Happened?
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+Here's what gitGost did behind the scenes:
 
-### Step 3: Go live
+<Steps>
+  <Step title="Received your push">
+    gitGost's server received your commits via the Git Smart HTTP protocol (the same protocol GitHub uses).
+  </Step>
+  
+  <Step title="Stripped metadata">
+    All identifying information was removed:
+    
+    ```diff
+    - Author: John Doe <john@example.com>
+    - Date: Mon Mar 5 14:23:45 2026 -0800
+    + Author: @gitgost-anonymous <anonymous@gitgost.local>
+    + Date: Mon Mar 5 22:24:01 2026 +0000
+    ```
+  </Step>
+  
+  <Step title="Created a fork">
+    gitGost created (or reused) a fork of the target repository under the `@gitgost-anonymous` account.
+  </Step>
+  
+  <Step title="Pushed to the fork">
+    Your anonymized commits were pushed to a unique branch in the fork (e.g., `gitgost-1709654321`).
+  </Step>
+  
+  <Step title="Opened a PR">
+    A pull request was created from the fork to the original repository with your commit message as the description.
+  </Step>
+</Steps>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+## Updating an Existing PR
 
-## Next steps
+You can update your anonymous PR without creating a new one:
 
-Now that you have your docs running, explore these key features:
+```bash
+# Use the pr-hash from the initial push
+git push gost fix-readme-typo:main -o pr-hash=a3f8c1d2
+```
 
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+The `-o pr-hash=a3f8c1d2` option tells gitGost to update the existing PR instead of creating a new one.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  The PR hash is deterministic—it's generated from the owner/repo/branch combination. Save it if you plan to update the PR later.
 </Note>
+
+## Advanced: Multiple Commits
+
+You can push multiple commits in a single push:
+
+```bash
+# Make several commits
+git commit -m "fix: typo in README"
+git commit -m "docs: improve installation instructions"
+git commit -m "chore: update copyright year"
+
+# Push all commits at once
+git push gost my-branch:main
+```
+
+All commits will be anonymized and included in the pull request.
+
+## Verifying Your Anonymity
+
+Once your PR is created, inspect the commit history on GitHub:
+
+<CodeGroup>
+```bash View PR in Browser
+# Open the PR URL from the push output
+open https://github.com/owner/repo/pull/12345
+```
+
+```bash Check Commit Author
+# In the PR, click "Commits" tab
+# You should see:
+# Author: @gitgost-anonymous
+# Email: anonymous@gitgost.local
+```
+</CodeGroup>
+
+<Tip>
+  Your original name, email, and timestamp are **never** visible in the commit history. Only the anonymized values appear.
+</Tip>
+
+## Notifications Without an Account
+
+gitGost provides anonymous PR notifications via [ntfy.sh](https://ntfy.sh):
+
+```bash
+# Subscribe in your browser
+open https://ntfy.sh/gitgost-pr-a3f8c1d2
+
+# Or use the ntfy CLI
+ntfy subscribe gitgost-pr-a3f8c1d2
+```
+
+You'll receive notifications when:
+- Your PR is updated
+- Comments are added
+- The PR is merged or closed
+
+**No account required.** ntfy.sh is an open-source notification service.
+
+## Stronger Anonymity with Tor
+
+gitGost strips metadata from commits, but your **IP address is still visible** to the server and GitHub. For stronger anonymity, route your push through Tor:
+
+<Steps>
+  <Step title="Install Tor">
+    ```bash
+    # Debian/Ubuntu
+    sudo apt install tor torsocks
+    
+    # macOS
+    brew install tor torsocks
+    
+    # Arch
+    sudo pacman -S tor torsocks
+    ```
+  </Step>
+  
+  <Step title="Start Tor service">
+    ```bash
+    # Linux
+    sudo systemctl start tor
+    
+    # macOS
+    brew services start tor
+    ```
+  </Step>
+  
+  <Step title="Verify Tor is running">
+    ```bash
+    torsocks curl https://check.torproject.org/api/ip
+    # Should return: {"IsTor": true, "IP": "185.220.101.x"}
+    ```
+  </Step>
+  
+  <Step title="Push through Tor">
+    ```bash
+    torsocks git -c http.extraHeader="X-Gost-Authorship-Confirmed: 1" \
+      push gost my-branch:main
+    ```
+    
+    <Warning>
+      Tor is **slow**. A push that normally takes seconds may take several minutes. This is expected—Tor routes traffic through three encrypted nodes worldwide.
+    </Warning>
+  </Step>
+</Steps>
+
+### Why the Extra Header?
+
+gitGost requires the `X-Gost-Authorship-Confirmed: 1` header when pushing through Tor to prevent abuse. It's a simple confirmation that you're aware you're making an anonymous contribution.
+
+## Troubleshooting
+
+### "Rate limit exceeded"
+
+```plaintext
+remote: Rate limit exceeded: max 5 PRs per hour per IP.
+remote: Please try again later.
+```
+
+**Cause**: gitGost limits each IP to 5 PRs per hour to prevent abuse.
+
+**Solution**: Wait an hour, or use a different network/VPN. If using Tor, your IP changes with each circuit.
+
+### "Repository too large"
+
+```plaintext
+remote: error: repository exceeds 500 MB limit
+```
+
+**Cause**: gitGost limits repository size to 500 MB to prevent resource exhaustion.
+
+**Solution**: gitGost is designed for small contributions, not massive repositories. Consider contributing through traditional means.
+
+### "Commit too large"
+
+```plaintext
+remote: error: commit size exceeds 10 MB limit
+```
+
+**Cause**: gitGost limits individual commit size to 10 MB.
+
+**Solution**: Split your changes into smaller commits, or avoid committing large binary files.
+
+### "Failed to create fork"
+
+```plaintext
+remote: error creating fork: failed to create fork: 403 Forbidden
+```
+
+**Cause**: The target repository may be private, or GitHub's API is experiencing issues.
+
+**Solution**: gitGost only works with **public repositories**. Verify the repository is public and try again.
+
+### "Service temporarily suspended"
+
+```plaintext
+remote: SERVICE TEMPORARILY SUSPENDED
+remote: The panic button has been activated.
+```
+
+**Cause**: The gitGost operator detected abuse (bot activity, mass PRs) and activated panic mode.
+
+**Solution**: Wait 15 minutes and try again. Panic mode is temporary and automatically lifted once the threat subsides.
+
+## Example Workflows
+
+### Fix a Typo
+
+```bash
+# Clone the repository (or use an existing clone)
+git clone https://github.com/owner/repo.git
+cd repo
+
+# Add gitGost remote
+git remote add gost https://gitgost.leapcell.app/v1/gh/owner/repo
+
+# Create branch and fix the typo
+git checkout -b fix-typo
+sed -i 's/recieve/receive/g' README.md
+
+# Commit with detailed message
+git commit -am "fix: correct spelling in README
+
+Fixed 'recieve' → 'receive' in installation section."
+
+# Push anonymously
+git push gost fix-typo:main
+```
+
+### Contribute to a Controversial Project
+
+```bash
+# Add gitGost remote to existing repository
+git remote add gost https://gitgost.leapcell.app/v1/gh/controversial/project
+
+# Create feature branch
+git checkout -b feature-improvement
+
+# Make changes
+# ... (edit files)
+
+# Commit
+git commit -am "feat: add support for new protocol
+
+Implements RFC-1234 for improved performance."
+
+# Push through Tor for maximum anonymity
+torsocks git -c http.extraHeader="X-Gost-Authorship-Confirmed: 1" \
+  push gost feature-improvement:main
+```
+
+### Update an Existing PR
+
+```bash
+# Make additional changes
+# ... (edit files)
+
+# Commit the updates
+git commit -am "fix: address review feedback
+
+Updated implementation based on maintainer comments."
+
+# Push update using the pr-hash from the original push
+git push gost feature-improvement:main -o pr-hash=a3f8c1d2
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Write Detailed Commit Messages" icon="pen">
+    Your commit message becomes the PR description. Provide context and rationale to help maintainers review your contribution.
+  </Card>
+  
+  <Card title="Use Tor for Sensitive Contributions" icon="user-secret">
+    If you're contributing to politically sensitive projects or from restrictive jurisdictions, route your push through Tor.
+  </Card>
+  
+  <Card title="Avoid Identifiable Patterns" icon="fingerprint">
+    Don't reuse unique phrases, coding styles, or domain-specific knowledge that could reveal your identity.
+  </Card>
+  
+  <Card title="Don't Mix Accounts" icon="user-slash">
+    Avoid contributing to the same repository with both your personal account and gitGost. This correlation can expose you.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="How It Works" icon="gears" href="/how-it-works">
+    Learn how gitGost implements the Git Smart HTTP protocol and strips metadata
+  </Card>
+  
+  <Card title="Threat Model" icon="shield-halved" href="/threat-model">
+    Understand what gitGost protects against and its limitations
+  </Card>
+  
+  <Card title="Self-Hosting" icon="server" href="/self-hosting">
+    Run your own gitGost instance for complete control
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api-reference">
+    Explore the full API for advanced use cases
+  </Card>
+</CardGroup>
+
+---
+
+<Tip>
+  **Pro tip**: Save your PR hash from the first push so you can update the PR later without creating duplicates.
+</Tip>

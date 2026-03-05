@@ -1,0 +1,754 @@
+---
+title: 'Anonymous Comments'
+description: 'Post anonymous comments on GitHub issues and pull requests'
+icon: 'comment'
+---
+
+## Overview
+
+Post comments anonymously on GitHub issues and pull requests using the `@gitgost-anonymous` bot account. Maintain a consistent anonymous identity using user tokens, build karma, and participate in discussions without revealing who you are.
+
+## Endpoints
+
+### Issue Comments
+
+```http
+POST /v1/gh/:owner/:repo/issues/:number/comments/anonymous
+```
+
+### Pull Request Comments
+
+```http
+POST /v1/gh/:owner/:repo/pulls/:number/comments/anonymous
+```
+
+<Info>
+Both endpoints use identical request/response formats. PR comments use the same GitHub API as issue comments.
+</Info>
+
+## Path Parameters
+
+<ParamField path="owner" type="string" required>
+  GitHub repository owner (user or organization)
+</ParamField>
+
+<ParamField path="repo" type="string" required>
+  Repository name
+</ParamField>
+
+<ParamField path="number" type="number" required>
+  Issue or pull request number (must be positive integer)
+</ParamField>
+
+## Authentication
+
+<Note>
+**No authentication required.** No API keys, tokens, or GitHub accounts needed. Anonymous participation is the core feature.
+</Note>
+
+## Request Body
+
+<ParamField body="body" type="string" required>
+  Comment text in Markdown format (must not be empty after trimming whitespace)
+</ParamField>
+
+<ParamField body="user_token" type="string" default="auto-generated">
+  Your anonymous identity token. Omit to generate a new identity, or provide an existing token to maintain consistency across comments.
+  
+  <Expandable title="Token Details">
+    - Format: 10-byte base32-encoded string (e.g., `XYZABC123456789`)
+    - Received from initial issue/comment creation
+    - Use same token to appear as same anonymous user
+    - Cannot be recovered if lost
+  </Expandable>
+</ParamField>
+
+## Response
+
+<ResponseField name="comment_url" type="string" required>
+  Full GitHub URL of the posted comment
+  
+  Example: `https://github.com/owner/repo/issues/42#issuecomment-123456789`
+</ResponseField>
+
+<ResponseField name="hash" type="string" required>
+  8-character identity hash visible in the comment footer
+</ResponseField>
+
+<ResponseField name="karma" type="number" required>
+  Your karma score for this issue/PR (increments with each comment)
+</ResponseField>
+
+<ResponseField name="user_token" type="string" required>
+  Your user token (newly generated if not provided in request). **Save this** to maintain identity.
+</ResponseField>
+
+## Examples
+
+### Post Comment on Issue
+
+<CodeGroup>
+```bash curl - New Identity
+curl -X POST https://gitgost.leapcell.app/v1/gh/owner/repo/issues/42/comments/anonymous \
+  -H "Content-Type: application/json" \
+  -d '{
+    "body": "I can confirm this bug. It also occurs on macOS 14.2 with Go 1.21.5."
+  }'
+```
+
+```bash curl - Existing Identity
+curl -X POST https://gitgost.leapcell.app/v1/gh/owner/repo/issues/42/comments/anonymous \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_token": "XYZABC123456789",
+    "body": "Update: I found a workaround. Adding a 100ms delay before closing the pool resolves the issue."
+  }'
+```
+
+```javascript JavaScript
+// First comment (new identity)
+const response1 = await fetch(
+  'https://gitgost.leapcell.app/v1/gh/owner/repo/issues/42/comments/anonymous',
+  {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      body: 'I can confirm this bug.'
+    })
+  }
+);
+
+const data1 = await response1.json();
+console.log('Save this token:', data1.user_token);
+
+// Follow-up comment (same identity)
+const response2 = await fetch(
+  'https://gitgost.leapcell.app/v1/gh/owner/repo/issues/42/comments/anonymous',
+  {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      user_token: data1.user_token,
+      body: 'Update: I found a workaround.'
+    })
+  }
+);
+```
+
+```python Python
+import requests
+
+# First comment
+response = requests.post(
+    'https://gitgost.leapcell.app/v1/gh/owner/repo/issues/42/comments/anonymous',
+    json={'body': 'I can confirm this bug.'}
+)
+
+data = response.json()
+user_token = data['user_token']  # Save this!
+
+# Follow-up comment
+response2 = requests.post(
+    'https://gitgost.leapcell.app/v1/gh/owner/repo/issues/42/comments/anonymous',
+    json={
+        'user_token': user_token,
+        'body': 'Update: I found a workaround.'
+    }
+)
+```
+</CodeGroup>
+
+### Post Comment on Pull Request
+
+<CodeGroup>
+```bash curl
+curl -X POST https://gitgost.leapcell.app/v1/gh/owner/repo/pulls/123/comments/anonymous \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_token": "XYZABC123456789",
+    "body": "This looks good to me. I tested it on my production workload and it resolves the memory leak."
+  }'
+```
+
+```javascript JavaScript
+await fetch(
+  'https://gitgost.leapcell.app/v1/gh/owner/repo/pulls/123/comments/anonymous',
+  {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      user_token: 'XYZABC123456789',
+      body: 'This looks good to me. I tested it on my production workload.'
+    })
+  }
+);
+```
+</CodeGroup>
+
+## Response Examples
+
+### Success (200 OK)
+
+```json
+{
+  "comment_url": "https://github.com/owner/repo/issues/42#issuecomment-123456789",
+  "hash": "a1b2c3d4",
+  "karma": 3,
+  "user_token": "XYZABC123456789"
+}
+```
+
+### Validation Errors (400 Bad Request)
+
+```json
+{
+  "error": "body is required"
+}
+```
+
+```json
+{
+  "error": "invalid issue number"
+}
+```
+
+```json
+{
+  "error": "invalid payload"
+}
+```
+
+### Moderation Errors
+
+**Hash Blocked (403 Forbidden)**
+```json
+{
+  "error": "hash bloqueado por reportes"
+}
+```
+
+**Cooldown Active (429 Too Many Requests)**
+```json
+{
+  "error": "cooldown activo por reportes"
+}
+```
+
+## Comment Format
+
+Your comment body is automatically appended with a footer:
+
+**Your Input:**
+```markdown
+I can confirm this bug. It also occurs on macOS 14.2.
+```
+
+**Posted Comment:**
+```markdown
+I can confirm this bug. It also occurs on macOS 14.2.
+
+---
+goster-a1b2c3d4 · karma (3) · [report](https://gitgost.leapcell.app/v1/moderation/report?hash=a1b2c3d4)
+```
+
+### Footer Components
+
+<ParamField path="hash" type="string">
+  Your 8-character identity hash for this issue/PR
+</ParamField>
+
+<ParamField path="karma" type="number">
+  Your current karma score (reputation)
+</ParamField>
+
+<ParamField path="report" type="url">
+  Link for others to report abusive content
+</ParamField>
+
+## Karma System
+
+<Info>
+Karma represents your reputation as an anonymous contributor **per issue/PR**. Each issue/PR has a separate karma score.
+</Info>
+
+### How Karma Works
+
+<Steps>
+  <Step title="Initial karma">
+    Starts at 0 when you first comment
+  </Step>
+  
+  <Step title="Increment per comment">
+    Each comment increases karma by +1
+  </Step>
+  
+  <Step title="Report impact">
+    If you receive 3+ reports, karma resets to 0
+  </Step>
+  
+  <Step title="Display">
+    Karma shows in every comment footer
+  </Step>
+</Steps>
+
+### Karma Benefits
+
+- **Reputation**: Higher karma shows you're a consistent contributor
+- **Trust**: Demonstrates good-faith participation
+- **Visibility**: Makes your comments more credible
+
+### Karma Calculation
+
+```go
+// New comment
+currentKarma := getKarma(hash)  // e.g., 2
+karma := currentKarma + 1       // Now 3
+
+// If flagged (3+ reports)
+if reports > 2 {
+    karma = 0  // Reset to 0
+    markFlaggedAction(hash)  // 6-hour cooldown
+}
+
+updateKarma(hash, karma)
+```
+
+**Source Reference**: `internal/http/handlers.go:1064-1075`, `1136-1147`
+
+## Hash System
+
+### Hash Generation
+
+Your hash is a deterministic HMAC-SHA256 derived from:
+
+```go
+input := fmt.Sprintf("%s/%s#%d|%s", owner, repo, number, userToken)
+h := hmac.New(sha256.New, secretKey)
+h.Write([]byte(input))
+hash := hex.EncodeToString(h.Sum(nil))[:8]
+```
+
+**Key Properties:**
+- **Deterministic**: Same token = same hash per issue/PR
+- **Unique**: Different hash for each issue/PR
+- **Anonymous**: Not linked to any personal information
+- **Cryptographic**: Cannot be forged or impersonated
+
+**Source Reference**: `internal/http/handlers.go:1359-1364`
+
+### Hash Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Identity Tracking" icon="fingerprint">
+    Identify your comments across the issue/PR
+  </Card>
+  
+  <Card title="Karma Association" icon="star">
+    Track reputation for this specific issue/PR
+  </Card>
+  
+  <Card title="Moderation" icon="shield">
+    Enable reporting and blocking of abusive users
+  </Card>
+  
+  <Card title="Consistency" icon="link">
+    Same hash for all your comments on this thread
+  </Card>
+</CardGroup>
+
+## Moderation System
+
+GitGost includes a community-driven moderation system to prevent abuse while maintaining anonymity.
+
+### Reporting Content
+
+Anyone can report a hash by clicking the `[report]` link in comment footers or visiting:
+
+```
+https://gitgost.leapcell.app/v1/moderation/report?hash=a1b2c3d4
+```
+
+### Report Thresholds
+
+<AccordionGroup>
+  <Accordion title="0-2 reports: Logged only">
+    - No action taken
+    - Internal monitoring only
+    - User can continue posting
+  </Accordion>
+  
+  <Accordion title="3-5 reports: Flagged">
+    - Hash flagged as problematic
+    - **6-hour cooldown** applied
+    - Karma reset to 0
+    - All existing comments updated to show karma=0
+    - Cannot post during cooldown
+  </Accordion>
+  
+  <Accordion title="6+ reports: Blocked">
+    - Hash permanently blocked
+    - All comments by this hash **automatically deleted**
+    - Cannot post new comments
+    - Error 403 on future attempts
+  </Accordion>
+</AccordionGroup>
+
+**Source Reference**: `internal/http/handlers.go:1053-1075`, `1125-1147`, `1253-1260`
+
+### Report Window
+
+Reports expire after **30 days**:
+
+```go
+const reportWindow = 30 * 24 * time.Hour
+```
+
+Old reports are automatically pruned, giving flagged users a fresh start.
+
+**Source Reference**: `internal/http/handlers.go:609-612`
+
+### Anti-Spam Measures
+
+- **Per-IP deduplication**: Same IP can only report a hash once
+- **Time-based windows**: Reports older than 30 days don't count
+- **Automatic deletion**: Comments from blocked hashes are removed
+- **Cooldown periods**: Prevent rapid re-offending
+
+## User Token Management
+
+<Warning>
+**Critical**: User tokens cannot be recovered if lost. Save them immediately.
+</Warning>
+
+### Best Practices
+
+<Tabs>
+  <Tab title="Local Storage">
+    ```bash
+    # Save to file
+    echo "XYZABC123456789" > ~/.gitgost/token-repo-issue42.txt
+    
+    # Use later
+    TOKEN=$(cat ~/.gitgost/token-repo-issue42.txt)
+    curl -X POST ... -d "{\"user_token\": \"$TOKEN\", ...}"
+    ```
+  </Tab>
+  
+  <Tab title="Environment Variable">
+    ```bash
+    # Export to environment
+    export GITGOST_TOKEN="XYZABC123456789"
+    
+    # Use in scripts
+    curl -X POST ... -d "{\"user_token\": \"$GITGOST_TOKEN\", ...}"
+    ```
+  </Tab>
+  
+  <Tab title="Browser LocalStorage">
+    ```javascript
+    // Save token
+    localStorage.setItem('gitgost-token-42', data.user_token);
+    
+    // Retrieve later
+    const token = localStorage.getItem('gitgost-token-42');
+    ```
+  </Tab>
+  
+  <Tab title="Password Manager">
+    Store tokens in your password manager:
+    - Title: `gitGost - owner/repo#42`
+    - Username: `anonymous`
+    - Password: `XYZABC123456789`
+    - URL: Issue/PR URL
+  </Tab>
+</Tabs>
+
+### Token Naming Convention
+
+Organize tokens by repository and issue/PR:
+
+```
+gitgost-token-{owner}-{repo}-{type}{number}
+
+Examples:
+- gitgost-token-facebook-react-issue42
+- gitgost-token-golang-go-pr12345
+- gitgost-token-microsoft-vscode-issue7890
+```
+
+## Rate Limiting
+
+<Info>
+No explicit per-endpoint rate limits, but service-wide abuse detection applies.
+</Info>
+
+### Global Monitoring
+
+GitGost monitors for:
+- Rapid comment posting patterns
+- Coordinated abuse across multiple IPs
+- Spam content
+- Mass reporting
+
+Suspicious activity may trigger:
+- Automatic hash flagging
+- Service-wide panic mode
+- Temporary IP blocks
+
+### Recommended Posting Frequency
+
+- **Normal participation**: No limits
+- **Avoid**: Posting >10 comments/minute
+- **Avoid**: Identical comments across multiple issues
+- **Best practice**: Thoughtful, substantive contributions
+
+## Implementation Details
+
+### Comment Footer Injection
+
+The server appends the footer to your body:
+
+```go
+reportURL := fmt.Sprintf("%s://%s/v1/moderation/report?hash=%s", 
+    getScheme(c.Request), c.Request.Host, hash)
+
+legend := fmt.Sprintf(
+    "\n\n---\ngoster-%s · karma (%d) · [report](%s)", 
+    hash, karma, reportURL)
+
+bodyWithLegend := req.Body + legend
+```
+
+**Source Reference**: `internal/http/handlers.go:1076-1079`, `1148-1151`
+
+### Karma Persistence
+
+Karma is stored in-memory with Supabase fallback:
+
+1. Check in-memory cache
+2. If not found, query Supabase
+3. Cache result in-memory
+4. Update both on changes
+
+**Source Reference**: `internal/http/handlers.go:1375-1405`
+
+### Report Tracking
+
+Reports stored per-hash with IP and timestamp:
+
+```go
+// Database structure
+type Report struct {
+    Hash      string
+    IP        string
+    Timestamp time.Time
+}
+```
+
+Prevents duplicate reports from same IP within 30-day window.
+
+**Source Reference**: `internal/http/handlers.go:1210-1263`
+
+## Limitations
+
+<AccordionGroup>
+  <Accordion title="Cannot edit comments">
+    Posted comments cannot be edited via the API. GitHub's edit functionality is not available to anonymous users.
+  </Accordion>
+  
+  <Accordion title="Cannot delete comments">
+    Comments cannot be manually deleted. Only automatic deletion occurs when a hash is blocked (6+ reports).
+  </Accordion>
+  
+  <Accordion title="No inline PR reviews">
+    This endpoint only supports general PR comments, not inline code review comments on specific lines.
+  </Accordion>
+  
+  <Accordion title="No rich media uploads">
+    Images, files, and attachments not supported. Use external hosting and Markdown links.
+  </Accordion>
+  
+  <Accordion title="Token recovery impossible">
+    Lost tokens cannot be recovered. You'll need to create a new identity.
+  </Accordion>
+  
+  <Accordion title="Separate karma per issue/PR">
+    Karma doesn't carry across different issues/PRs. Each thread has independent karma tracking.
+  </Accordion>
+</AccordionGroup>
+
+## Security Considerations
+
+<CardGroup cols={2}>
+  <Card title="Identity Protection" icon="mask">
+    - No IP logging
+    - No user tracking
+    - Cryptographic hash isolation
+    - Open source and auditable
+  </Card>
+  
+  <Card title="Abuse Prevention" icon="shield">
+    - Community-driven reporting
+    - Automatic moderation thresholds
+    - Time-based cooldowns
+    - Permanent blocking for severe abuse
+  </Card>
+  
+  <Card title="Privacy by Design" icon="eye-slash">
+    - No analytics or telemetry
+    - No request logging
+    - No user profiling
+    - Anonymous by default
+  </Card>
+  
+  <Card title="Cryptographic Integrity" icon="lock">
+    - HMAC-based hashing
+    - Unforgeable identities
+    - No token reuse across issues
+    - Secure random generation
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+### Writing Effective Anonymous Comments
+
+<Tabs>
+  <Tab title="Technical Contributions">
+    ```markdown
+    I can reproduce this on:
+    - OS: Ubuntu 22.04
+    - Go version: 1.21.5
+    - Architecture: arm64
+    
+    Stack trace:
+    ```
+    panic: runtime error: invalid memory address
+    goroutine 42 [running]:
+    main.worker()
+        /app/main.go:123 +0x45
+    ```
+    
+    Potential fix: Adding nil check at line 120 resolves the panic.
+    ```
+  </Tab>
+  
+  <Tab title="Bug Reports">
+    ```markdown
+    ## Reproduction Steps
+    1. Start server with `go run main.go`
+    2. Send 100 concurrent requests to `/api/data`
+    3. Monitor memory usage with `top`
+    4. Observe memory increases but never decreases
+    
+    ## Expected
+    Memory should stabilize after requests complete.
+    
+    ## Actual
+    Memory grows continuously, reaching 2GB after 1000 requests.
+    ```
+  </Tab>
+  
+  <Tab title="Review Feedback">
+    ```markdown
+    This approach looks solid. A few suggestions:
+    
+    1. Consider adding a context timeout at line 45 to prevent goroutine leaks
+    2. The error handling at line 78 could be more specific
+    3. Might be worth adding a test case for concurrent access
+    
+    Overall the logic is sound. Tested on my production workload (1M req/day) without issues.
+    ```
+  </Tab>
+</Tabs>
+
+### Maintaining Consistent Identity
+
+<Steps>
+  <Step title="Save token immediately">
+    Store the `user_token` as soon as you receive it
+  </Step>
+  
+  <Step title="Use consistent naming">
+    Name saved tokens by repo and issue/PR number
+  </Step>
+  
+  <Step title="Build karma gradually">
+    Post thoughtful comments to increase karma over time
+  </Step>
+  
+  <Step title="Avoid flagging">
+    Follow community guidelines to prevent reports
+  </Step>
+</Steps>
+
+## Related Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Anonymous Issues" icon="circle-exclamation" href="/api/anonymous-issues">
+    Create anonymous issues to start new discussions
+  </Card>
+  
+  <Card title="Anonymous PRs" icon="git-pull-request" href="/api/anonymous-pr">
+    Submit anonymous code contributions via Git push
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### "body is required"
+
+Ensure the body field contains non-whitespace content:
+
+```json
+// ❌ Invalid
+{"body": ""}
+{"body": "   "}
+
+// ✅ Valid
+{"body": "This looks great!"}
+```
+
+### "invalid issue number"
+
+The issue/PR number must be a positive integer:
+
+```bash
+# ❌ Invalid
+/v1/gh/owner/repo/issues/abc/comments/anonymous
+/v1/gh/owner/repo/issues/-1/comments/anonymous
+
+# ✅ Valid
+/v1/gh/owner/repo/issues/42/comments/anonymous
+```
+
+### "hash bloqueado por reportes"
+
+Your hash has been permanently blocked (6+ reports). This means:
+- Your user token is no longer valid for this issue/PR
+- Past comments have been deleted
+- You must create a new identity (don't reuse the token)
+
+### "cooldown activo por reportes"
+
+Your hash is flagged (3-5 reports) with a 6-hour cooldown:
+- Wait 6 hours before posting again
+- Your karma has been reset to 0
+- Consider whether your previous comments violated guidelines
+
+### Token doesn't maintain identity
+
+Ensure you're sending the exact token:
+- Copy-paste without modifications
+- Include in `user_token` field
+- Use same token for same issue/PR
+- Don't add quotes, spaces, or formatting
+
+### Comment not appearing
+
+Check for:
+- Issue/PR number is correct
+- Repository exists and is public
+- Bot has access to the repository
+- You're not in cooldown period
+- Hash is not blocked

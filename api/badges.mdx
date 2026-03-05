@@ -1,0 +1,229 @@
+---
+title: 'Badge Endpoints'
+description: 'Dynamic SVG badges for anonymous contributor friendliness and PR counts'
+---
+
+## Overview
+
+Badge endpoints generate dynamic SVG badges that can be embedded in README files to signal support for anonymous contributions or display PR statistics.
+
+## GET /badges/:badge
+
+Serve static badges for signaling anonymous contributor support.
+
+### Parameters
+
+<ResponseField name="badge" type="string" required>
+  Badge type identifier:
+  - `anonymous-friendly.svg` - Static "Anonymous Contributor Friendly" badge
+  - `deployed.svg` - Shows current deployment commit hash
+</ResponseField>
+
+### Anonymous Friendly Badge
+
+#### Static Version
+
+Displays a generic "Anonymous Contributor Friendly" badge.
+
+<CodeGroup>
+```markdown README Embedding
+![Anonymous Contributor Friendly](https://gitgost.leapcell.app/badges/anonymous-friendly.svg)
+```
+
+```html HTML
+<img src="https://gitgost.leapcell.app/badges/anonymous-friendly.svg" 
+     alt="Anonymous Contributor Friendly" />
+```
+</CodeGroup>
+
+#### Dynamic Verified Version
+
+For repositories with a `.gitgost.yml` file, include the `repo` query parameter to show verified status:
+
+<CodeGroup>
+```markdown README Embedding
+![Anonymous Contributor Friendly](https://gitgost.leapcell.app/badges/anonymous-friendly.svg?repo=livrasand%2FgitGost)
+```
+
+```html HTML
+<img src="https://gitgost.leapcell.app/badges/anonymous-friendly.svg?repo=owner%2Frepo" 
+     alt="Anonymous Contributor Friendly" />
+```
+</CodeGroup>
+
+#### Query Parameters
+
+<ResponseField name="repo" type="string">
+  Repository in `owner/repo` format (URL-encoded). If provided and a `.gitgost.yml` file exists, the badge shows verified status in green. If the file doesn't exist, it shows gray.
+</ResponseField>
+
+#### Response
+
+- Content-Type: `image/svg+xml`
+- Format: SVG badge with appropriate styling
+- Color: Green (#4CAF50) for verified repos, Gray (#9E9E9E) for unverified
+
+### Deployed Badge
+
+Shows the currently deployed commit hash or service status.
+
+<CodeGroup>
+```markdown README Embedding
+![Deployed](https://gitgost.leapcell.app/badges/deployed.svg)
+```
+
+```html HTML
+<img src="https://gitgost.leapcell.app/badges/deployed.svg" 
+     alt="gitGost Deployed Status" />
+```
+</CodeGroup>
+
+#### Query Parameters
+
+<ResponseField name="commit" type="string">
+  Optional commit hash to display. Defaults to currently deployed commit. Automatically truncated to 7 characters.
+</ResponseField>
+
+#### Response
+
+- Content-Type: `image/svg+xml`
+- Cache-Control: `public, max-age=3600`
+- Color: Blue (#0ea5e9) when active, Red (#e05d44) when suspended
+
+#### Service States
+
+<CodeGroup>
+```svg Normal (Blue)
+<!-- Shows: "deployed | abc1234" -->
+<svg ...>...</svg>
+```
+
+```svg Suspended (Red)
+<!-- Shows: "gitGost | suspended" -->
+<svg ...>...</svg>
+```
+</CodeGroup>
+
+## GET /badge/:owner/:repo
+
+Generate a dynamic badge showing the count of anonymous PRs created for a specific repository.
+
+### Parameters
+
+<ResponseField name="owner" type="string" required>
+  GitHub repository owner (alphanumeric, hyphens, underscores, dots)
+</ResponseField>
+
+<ResponseField name="repo" type="string" required>
+  Repository name (alphanumeric, hyphens, underscores, dots)
+</ResponseField>
+
+### Request
+
+<CodeGroup>
+```markdown README Embedding
+![Anonymous PRs](https://gitgost.leapcell.app/badge/livrasand/gitGost)
+```
+
+```html HTML
+<img src="https://gitgost.leapcell.app/badge/torvalds/linux" 
+     alt="Anonymous PRs" />
+```
+
+```bash Direct Access
+curl https://gitgost.leapcell.app/badge/golang/go
+```
+</CodeGroup>
+
+### Response
+
+- Content-Type: `image/svg+xml`
+- Cache-Control: `public, max-age=300` (5 minutes)
+- Format: Shields.io-compatible SVG badge
+- Label: "Anonymous PRs"
+- Value: PR count (integer)
+- Color: Green (#4CAF50)
+
+### Response Example
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" width="130" height="20" ...>
+  <title>Anonymous PRs: 42</title>
+  <!-- Badge displays: "Anonymous PRs | 42" -->
+</svg>
+```
+
+### Caching Behavior
+
+- Internal cache TTL: 5 minutes
+- HTTP cache header: 5 minutes
+- Automatically refreshes on cache expiry
+- Falls back to last known value on database errors
+
+### Error Responses
+
+#### Invalid Repository Name
+
+```json
+{
+  "error": "Invalid owner or repo"
+}
+```
+
+HTTP Status: `400 Bad Request`
+
+Validation rules:
+- Length: 1-100 characters
+- Allowed: alphanumeric, `-`, `_`, `.`
+- Forbidden: `..`, `/`, path traversal attempts
+
+## Embedding Examples
+
+### Full Repository Badge Set
+
+<CodeGroup>
+```markdown Markdown
+[![Anonymous Contributor Friendly](https://gitgost.leapcell.app/badges/anonymous-friendly.svg?repo=livrasand%2FgitGost)](https://gitgost.leapcell.app)
+[![Anonymous PRs](https://gitgost.leapcell.app/badge/livrasand/gitGost)](https://gitgost.leapcell.app)
+[![Deployed](https://gitgost.leapcell.app/badges/deployed.svg)](https://gitgost.leapcell.app/health)
+```
+
+```html HTML
+<a href="https://gitgost.leapcell.app">
+  <img src="https://gitgost.leapcell.app/badges/anonymous-friendly.svg?repo=owner%2Frepo" 
+       alt="Anonymous Contributor Friendly" />
+</a>
+<a href="https://gitgost.leapcell.app">
+  <img src="https://gitgost.leapcell.app/badge/owner/repo" 
+       alt="Anonymous PRs" />
+</a>
+```
+</CodeGroup>
+
+### Verification Badge Setup
+
+To enable the verified badge (green status), add a `.gitgost.yml` file to your repository root:
+
+```yaml .gitgost.yml
+# Enable anonymous contributions
+anonymous_friendly: true
+```
+
+Then use the dynamic badge with the `repo` parameter:
+
+```markdown
+![Anonymous Contributor Friendly](https://gitgost.leapcell.app/badges/anonymous-friendly.svg?repo=yourusername%2Fyourrepo)
+```
+
+## Implementation Reference
+
+Source: `internal/http/handlers.go`
+
+- `BadgeHandler` (lines 1417-1433)
+- `serveAnonymousFriendlyBadge` (lines 1482-1502)
+- `serveDeployedBadge` (lines 1504-1561)
+- `serveSuspendedBadge` (lines 1435-1480)
+- `BadgePRCountHandler` (lines 1571-1653)
+- Badge cache implementation (lines 1563-1569)
+
+Router configuration: `internal/http/router.go` (lines 147-149)

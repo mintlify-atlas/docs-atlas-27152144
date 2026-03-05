@@ -1,0 +1,279 @@
+---
+title: When NOT to Use gitGost
+description: Prohibited uses and abuse prevention measures
+icon: 'ban'
+---
+
+<Warning>
+**Critical:** gitGost is designed for privacy-respecting contributions, **not for evading accountability**. Misuse will be detected and mitigated.
+</Warning>
+
+gitGost enforces strict policies and technical safeguards to prevent abuse. This page outlines prohibited uses and the consequences of violating them.
+
+## Prohibited Uses
+
+### Content-Related Violations
+
+<CardGroup cols={2}>
+  <Card title="Malicious Code" icon="bug" color="#dc2626">
+    **Strictly prohibited:**
+    - Malware, ransomware, or spyware
+    - Backdoors or security exploits
+    - Code designed to harm or surveil users
+    - Cryptojacking or resource hijacking scripts
+  </Card>
+  
+  <Card title="Harmful Content" icon="triangle-exclamation" color="#dc2626">
+    **Strictly prohibited:**
+    - Sexually explicit material or pornography
+    - Content sexualizing minors in any form
+    - Promotion of violence, terrorism, or self-harm
+    - Hate speech or discriminatory content
+  </Card>
+  
+  <Card title="Illegal Material" icon="gavel" color="#dc2626">
+    **Strictly prohibited:**
+    - Illegal weapons manufacturing instructions
+    - Drug trafficking or distribution facilitation
+    - Stolen intellectual property
+    - Trade secret violations
+  </Card>
+  
+  <Card title="Harassment & Abuse" icon="user-slash" color="#dc2626">
+    **Strictly prohibited:**
+    - Targeted harassment or doxxing
+    - Defamation or impersonation
+    - Coordinated abuse campaigns
+    - Spam or automated flooding
+  </Card>
+</CardGroup>
+
+### Operational & Technical Abuse
+
+<Accordion title="Security Circumvention">
+  **You may NOT use gitGost to:**
+  
+  - Bypass repository access controls or permissions
+  - Evade bans or moderation actions
+  - Circumvent rate limits through automated tools
+  - Exploit vulnerabilities in target repositories
+  - Use gitGost infrastructure for penetration testing
+  
+  **Consequence:** Immediate hash blocking and potential legal action.
+</Accordion>
+
+<Accordion title="Fraud & Social Engineering">
+  **You may NOT use gitGost for:**
+  
+  - Phishing attempts or credential theft
+  - Identity theft or impersonation
+  - False attribution or misleading contributions
+  - Fraudulent claims or misrepresentation
+  - Trojan contributions (innocent-looking code with hidden malicious intent)
+  
+  **Consequence:** Hash blocking and coordination with law enforcement where applicable.
+</Accordion>
+
+<Accordion title="Automated Abuse">
+  **You may NOT use gitGost with:**
+  
+  - Bots or automated PR generation scripts
+  - Repository scrapers or spam tools
+  - Coordinated flooding campaigns
+  - Distributed abuse across multiple IPs
+  
+  **Consequence:** Rate limiting, IP blocking, and service-wide panic mode activation.
+</Accordion>
+
+### Legal & Ethical Violations
+
+<Warning>
+**Legal Responsibility:**
+
+By using gitGost, you declare that your contribution:
+
+1. Is your **original work** or properly licensed
+2. Does **not infringe** third-party intellectual property
+3. Does **not violate** confidentiality or trade secret agreements
+4. Complies with **applicable laws** in your jurisdiction and Mexico
+
+You bear **sole legal responsibility** for this declaration. See [LEGAL.md](https://github.com/livrasand/gitGost/blob/main/LEGAL.md) for full terms.
+</Warning>
+
+## Abuse Prevention Measures
+
+gitGost implements multiple layers of protection against misuse:
+
+### Rate Limiting
+
+<Card title="Per-IP Limits" icon="gauge">
+  **5 PRs per IP per hour**
+  
+  Prevents spam flooding while allowing legitimate rapid contributions. Resets hourly.
+</Card>
+
+### Size Constraints
+
+<CardGroup cols={2}>
+  <Card title="Repository Size" icon="database">
+    **Maximum: 500 MB**
+    
+    Prevents abuse of gitGost for hosting large datasets or binaries.
+  </Card>
+  
+  <Card title="Commit Size" icon="file">
+    **Maximum: 10 MB**
+    
+    Balances legitimate contributions with Tor network compatibility.
+  </Card>
+</CardGroup>
+
+### Validation & Sanitization
+
+<Accordion title="Git Object Validation">
+  Every push is validated for:
+  
+  - **Valid Git refs:** Ensures proper branch/tag formatting
+  - **Object integrity:** Checks for corrupted or malformed Git objects
+  - **Commit structure:** Validates author/committer fields are properly stripped
+  - **Repository accessibility:** Confirms target repo exists and accepts PRs
+</Accordion>
+
+<Accordion title="Metadata Stripping">
+  gitGost automatically removes:
+  
+  - Author name and email from commits
+  - Committer name and email
+  - Original timestamps (replaced with current time)
+  - GPG signatures and signed commits
+  - Custom Git headers and trailers
+  
+  All PRs are created by the neutral `@gitgost-anonymous` bot account.
+</Accordion>
+
+### Emergency Response
+
+<Card title="Panic Mode" icon="siren" color="#dc2626">
+  If abusive activity is detected, administrators can:
+  
+  - **Suspend the service** immediately (all pushes rejected)
+  - **Close recent PRs** in bulk (2-hour rollback window)
+  - **Block contribution hashes** from future submissions
+  - **Display public warnings** on the service website
+  
+  See [Service Administration](https://github.com/livrasand/gitGost#service-administration) for details.
+</Card>
+
+## Consequences of Abuse
+
+### Immediate Actions
+
+1. **Hash Blocking:** The commit hash is permanently blocked from making future submissions
+2. **Rate Limit Enforcement:** IP-based throttling prevents rapid retry attempts
+3. **PR Rejection:** The malicious PR is immediately closed or never created
+
+### Escalation Path
+
+<Steps>
+  <Step title="Detection">
+    Abuse detected through rate limits, validation failures, or manual reports
+  </Step>
+  
+  <Step title="Mitigation">
+    Hash blocked, service suspended if widespread, affected PRs closed
+  </Step>
+  
+  <Step title="Investigation">
+    Logs reviewed (within 2-hour retention window), patterns identified
+  </Step>
+  
+  <Step title="Legal Action">
+    For serious violations (malware, harassment, fraud), coordination with:
+    - GitHub Trust & Safety
+    - Law enforcement (if criminal activity)
+    - Copyright holders (for DMCA violations)
+  </Step>
+</Steps>
+
+### DMCA & Intellectual Property Claims
+
+<Accordion title="Reporting IP Infringement">
+  If you believe content submitted through gitGost infringes your intellectual property:
+  
+  **Contact:** `gitGos@proton.me` with subject `[DMCA]` or `[IP-CLAIM]`
+  
+  **Include:**
+  1. Identification of your copyrighted work
+  2. PR URL, commit hash, or repository link
+  3. Your contact information
+  4. Good-faith statement and declaration under penalty of perjury
+  
+  **Response time:**
+  - Acknowledgment within **5 business days**
+  - Action taken within **10 business days**
+  
+  **Action:** Contribution hash blocked, PR closure requested from target repository
+  
+  See [LEGAL.md](https://github.com/livrasand/gitGost/blob/main/LEGAL.md#4-safe-harbor-and-intellectual-property-infringement) for full procedures.
+</Accordion>
+
+## What Makes a Contribution Appropriate?
+
+<Tip>
+**Ask yourself:**
+
+✅ Would I make this contribution under my real name if I felt safe doing so?  
+✅ Does this contribution improve the project in good faith?  
+✅ Am I respecting the maintainer's time and the community's norms?  
+✅ Is my only concern the privacy of my identity, not evading consequences?
+
+If you answered **yes** to all four questions, gitGost is appropriate for your use case.
+</Tip>
+
+### Good vs. Bad Anonymity
+
+| ✅ Appropriate Use | ❌ Inappropriate Use |
+|-------------------|---------------------|
+| Fixing typos without public record | Submitting spam PRs |
+| Contributing despite employer restrictions | Evading repository bans |
+| Protecting identity in hostile jurisdiction | Harassing maintainers |
+| Experimenting without social pressure | Injecting malicious code |
+| Avoiding email harvesting | Circumventing contribution agreements |
+
+## Reporting Abuse
+
+If you observe abusive use of gitGost:
+
+<CardGroup cols={2}>
+  <Card title="Email Report" icon="envelope">
+    **Email:** `gitGos@proton.me`  
+    **Subject:** `[ABUSE]`
+    
+    Include PR URL, repository, and description of abuse.
+  </Card>
+  
+  <Card title="Anonymous Report" icon="user-secret">
+    **GitHub Issue:** Open with prefix `[LEGAL]` or `[ABUSE]`
+    
+    Reports can be made anonymously through throwaway accounts.
+  </Card>
+</CardGroup>
+
+## Why These Rules Exist
+
+<Card title="Protecting the Service" icon="shield-halved">
+  gitGost exists to serve **legitimate privacy needs**, not to enable harm. Strict abuse prevention:
+  
+  - Keeps the service operational for those who need it
+  - Prevents legal liability for the project maintainers
+  - Maintains trust with repository maintainers and the GitHub platform
+  - Ensures gitGost doesn't become a vector for coordinated attacks
+</Card>
+
+Every abuse incident risks shutting down the service for everyone. **Use it responsibly.**
+
+---
+
+<Card title="Legitimate Uses" icon="check" href="/use-cases/legitimate-uses">
+  Learn when gitGost is the right tool for your contribution
+</Card>

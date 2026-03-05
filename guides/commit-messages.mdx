@@ -1,0 +1,572 @@
+---
+title: 'Writing Commit Messages'
+description: 'Best practices for commit messages in anonymous contributions'
+icon: 'message'
+---
+
+## Why Commit Messages Matter
+
+When you push to gitGost, your **commit message becomes the PR description**. Since you're contributing anonymously, you can't edit the PR or add comments to provide context—the commit message is your only voice.
+
+<Note>
+Your commit message is the **only** way to explain your changes to maintainers. Make it clear, detailed, and professional.
+</Note>
+
+## Commit Message Anatomy
+
+A well-structured commit message has three parts:
+
+```
+<type>: <short summary>
+
+<detailed explanation>
+
+<additional context>
+```
+
+### Example
+
+```bash
+git commit -m "fix: correct API timeout handling in HTTP client
+
+The previous timeout of 5 seconds was too short for slow networks,
+causing unnecessary request failures. This commit increases the 
+timeout to 30 seconds and adds exponential backoff for retries.
+
+Tested with simulated network delays of 10-25 seconds.
+Fixes issue with API calls failing on 3G connections."
+```
+
+This becomes the PR description:
+
+---
+
+**Anonymous contribution via gitGost**
+
+> fix: correct API timeout handling in HTTP client
+> 
+> The previous timeout of 5 seconds was too short for slow networks,
+> causing unnecessary request failures. This commit increases the 
+> timeout to 30 seconds and adds exponential backoff for retries.
+> 
+> Tested with simulated network delays of 10-25 seconds.
+> Fixes issue with API calls failing on 3G connections.
+
+---
+
+*This is an anonymous contribution made via gitGost.*
+
+---
+
+## The First Line: Short Summary
+
+The first line is critical—it appears in:
+- Git logs
+- GitHub PR titles
+- Email notifications
+- Commit lists
+
+### Best Practices
+
+<Steps>
+  <Step title="Use a type prefix">
+    Start with a conventional commit type:
+    
+    - `feat:` - New feature
+    - `fix:` - Bug fix
+    - `docs:` - Documentation only
+    - `style:` - Formatting, whitespace
+    - `refactor:` - Code restructuring
+    - `test:` - Adding/updating tests
+    - `chore:` - Build, dependencies
+    
+    ```bash
+    # Good
+    feat: add dark mode support
+    fix: resolve memory leak in cache
+    docs: update API examples
+    
+    # Bad (no type)
+    Added dark mode
+    Memory leak fixed
+    ```
+  </Step>
+
+  <Step title="Keep it under 50 characters">
+    GitHub truncates long summaries:
+    
+    ```bash
+    # Good (45 chars)
+    fix: correct GPIO pin mapping in BCM2835 driver
+    
+    # Bad (78 chars)
+    fix: correct the GPIO pin mapping in the BCM2835 driver for Raspberry Pi boards
+    ```
+    
+    <Tip>
+    Use `git log --oneline` locally to preview how your summary appears.
+    </Tip>
+  </Step>
+
+  <Step title="Use imperative mood">
+    Write as if commanding the codebase:
+    
+    ```bash
+    # Good (imperative)
+    fix: add validation for empty input
+    refactor: extract common utility functions
+    
+    # Bad (past tense)
+    fix: added validation for empty input
+    refactor: extracted common utility functions
+    
+    # Bad (present tense)
+    fix: adds validation for empty input
+    ```
+    
+    Think: "This commit will **add validation**..."
+  </Step>
+
+  <Step title="Don't end with a period">
+    ```bash
+    # Good
+    feat: implement user authentication
+    
+    # Bad
+    feat: implement user authentication.
+    ```
+  </Step>
+</Steps>
+
+## The Body: Detailed Explanation
+
+After a blank line, write a detailed explanation:
+
+### What to Include
+
+<AccordionGroup>
+  <Accordion title="What changed and why">
+    Explain **why** this change is necessary:
+    
+    ```bash
+    fix: increase API request timeout
+    
+    The default timeout of 5s was causing failures on slow networks.
+    Users on 3G connections or behind corporate proxies were seeing
+    frequent request failures, especially during peak hours.
+    
+    This commit increases the timeout to 30s and adds retry logic
+    with exponential backoff (1s, 2s, 4s, 8s).
+    ```
+  </Accordion>
+
+  <Accordion title="How you tested it">
+    Describe testing steps:
+    
+    ```bash
+    test: add integration tests for payment flow
+    
+    Added end-to-end tests covering:
+    - Successful payment processing
+    - Card declined scenarios
+    - Network timeout handling
+    - Duplicate transaction prevention
+    
+    All tests pass with 100% coverage of payment module.
+    Run with: npm test -- payment.test.js
+    ```
+  </Accordion>
+
+  <Accordion title="Edge cases and caveats">
+    Mention limitations:
+    
+    ```bash
+    refactor: switch to new config parser
+    
+    Migrates from YAML to TOML for configuration files.
+    The new parser is 3x faster and has better error messages.
+    
+    Note: This breaks compatibility with YAML configs.
+    Users need to migrate using: ./scripts/migrate-config.sh
+    ```
+  </Accordion>
+
+  <Accordion title="Related issues or context">
+    Link to discussions (if public):
+    
+    ```bash
+    fix: resolve race condition in cache invalidation
+    
+    The cache was being invalidated before new data was written,
+    causing a brief window where stale data could be served.
+    
+    Reorders operations to: write → update index → invalidate.
+    Related to discussion in issue #234.
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Format Guidelines
+
+- **Wrap at 72 characters** per line
+- Use blank lines between paragraphs
+- Use bullet points for lists
+- Be specific, not vague
+
+## Examples: Good vs. Bad
+
+### Example 1: Bug Fix
+
+<CodeGroup>
+
+```bash Bad
+fix: bug
+```
+
+```bash Good
+fix: prevent crash when parsing malformed JSON
+
+The JSON parser would throw an unhandled exception when 
+encountering unexpected tokens at the top level. This caused
+the entire application to crash instead of returning an error.
+
+Now catches the exception and returns a descriptive error
+message to the caller. Added tests for common malformed inputs.
+```
+
+</CodeGroup>
+
+### Example 2: New Feature
+
+<CodeGroup>
+
+```bash Bad
+Added new feature
+```
+
+```bash Good
+feat: add pagination support to user list API
+
+Introduces `page` and `limit` query parameters for /api/users.
+Defaults to 20 users per page with a maximum of 100.
+
+Returns pagination metadata in response headers:
+- X-Total-Count: total number of users
+- X-Page: current page number
+- Link: next/prev page URLs (RFC 5988)
+
+Backward compatible: omitting params returns all users (old behavior).
+```
+
+</CodeGroup>
+
+### Example 3: Documentation
+
+<CodeGroup>
+
+```bash Bad
+docs: updated README
+```
+
+```bash Good
+docs: add installation instructions for Windows
+
+The README only covered Linux/macOS installation. Added a new
+section for Windows users covering:
+- Installing dependencies via Chocolatey
+- Setting up the development environment
+- Common troubleshooting steps
+
+Also fixed broken links to API documentation.
+```
+
+</CodeGroup>
+
+## Anonymous Contribution Tips
+
+Since you're contributing anonymously, avoid revealing your identity:
+
+### ❌ Don't Include
+
+- Personal names or usernames
+- Company names or projects
+- Email addresses
+- Timezone references ("I pushed this at 3am")
+- Personal anecdotes ("This always annoys me")
+
+### ✅ Do Include
+
+- Technical rationale
+- Objective testing results
+- Links to public documentation
+- Neutral language
+
+### Bad Example (Reveals Identity)
+
+```bash
+fix: update API endpoint
+
+At AcmeCorp, we noticed this endpoint was broken.
+I've been using this library for 5 years and this
+always bugged me. Finally got around to fixing it!
+
+Tested on our internal systems.
+```
+
+**Problems**:
+- Mentions company name ("AcmeCorp")
+- Uses "I" and "me" (personal)
+- References internal systems
+
+### Good Example (Anonymous)
+
+```bash
+fix: correct response format in /api/status endpoint
+
+The endpoint was returning HTTP 200 with an error message
+in the body instead of using proper HTTP error codes.
+
+Now returns:
+- 200 OK: service healthy
+- 503 Service Unavailable: service degraded
+
+Matches the documented API specification.
+```
+
+**Why it works**:
+- No personal pronouns
+- No company/project references
+- Objective, technical description
+- References public documentation
+
+## Multi-Line Commit Messages
+
+To write multi-line messages, use an editor:
+
+```bash
+# Opens your default editor (vim, nano, etc.)
+git commit
+```
+
+Or use multiple `-m` flags:
+
+```bash
+git commit \
+  -m "fix: correct timeout handling" \
+  -m "The previous timeout of 5s was too short." \
+  -m "Increased to 30s with exponential backoff."
+```
+
+Or use a heredoc:
+
+```bash
+git commit -m "$(cat <<EOF
+fix: correct timeout handling
+
+The previous timeout of 5s was too short for slow networks.
+Increased to 30s with exponential backoff (1s, 2s, 4s, 8s).
+
+Tested with simulated network delays up to 25s.
+EOF
+)"
+```
+
+## Commit Message Template
+
+Create a template file `~/.gitmessage`:
+
+```bash
+# Type: Summary (50 chars max)
+
+# Why is this change needed?
+# 
+
+# How does it address the issue?
+# 
+
+# What testing was done?
+# 
+
+# Any caveats or limitations?
+# 
+```
+
+Then configure Git to use it:
+
+```bash
+git config --global commit.template ~/.gitmessage
+```
+
+Now `git commit` opens with this template.
+
+## Linking to Issues
+
+If the repository has a public issue tracker, you can reference issues:
+
+```bash
+fix: resolve memory leak in background worker
+
+The worker was not releasing database connections after
+completing tasks, causing connection pool exhaustion.
+
+Fixes #1234
+```
+
+<Note>
+GitHub will automatically close issue #1234 when the PR is merged if you use keywords like `Fixes`, `Closes`, or `Resolves`.
+</Note>
+
+## Multiple Commits
+
+If pushing multiple commits, **each** commit message should be clear:
+
+```bash
+git log --oneline
+# a1b2c3d docs: update API examples
+# e4f5g6h test: add integration tests
+# i7j8k9l feat: add user authentication
+```
+
+All three messages appear in the PR—don't rely on only the last commit being descriptive.
+
+## Reviewing Your Message
+
+Before pushing, review your commit message:
+
+```bash
+git log -1 --pretty=format:"%B"
+```
+
+Ask yourself:
+
+- [ ] Is the summary under 50 characters?
+- [ ] Does it explain **why**, not just what?
+- [ ] Would a maintainer understand without context?
+- [ ] Does it avoid personal/company information?
+- [ ] Is it professional and respectful?
+
+If yes to all, you're good to push!
+
+## Common Mistakes
+
+### Too Vague
+
+```bash
+# Bad
+fix: update code
+
+# Good
+fix: prevent null pointer exception in user parser
+```
+
+### Too Detailed (in summary)
+
+```bash
+# Bad (summary too long)
+fix: update the JSON parser to handle malformed input by catching exceptions and returning error messages instead of crashing
+
+# Good
+fix: prevent crash when parsing malformed JSON
+
+# (Details go in body)
+The parser now catches exceptions and returns descriptive errors.
+```
+
+### No Context
+
+```bash
+# Bad
+fix: change timeout
+
+# Good
+fix: increase API timeout for slow networks
+
+The 5s timeout was too short for 3G connections.
+Increased to 30s with exponential backoff.
+```
+
+## Best Practices Summary
+
+<CardGroup cols={2}>
+  <Card title="Be Specific" icon="bullseye">
+    Explain **what** changed and **why**. Avoid vague summaries like "fix bug" or "update code."
+  </Card>
+  
+  <Card title="Be Concise" icon="minimize">
+    Keep the summary under 50 characters. Save details for the body.
+  </Card>
+  
+  <Card title="Be Anonymous" icon="ghost">
+    Avoid personal pronouns (I, we, our) and company references. Use neutral, technical language.
+  </Card>
+  
+  <Card title="Be Professional" icon="briefcase">
+    Write respectfully. You're asking maintainers to accept your code—make it easy for them.
+  </Card>
+</CardGroup>
+
+## Tools and Resources
+
+### Commit Message Linters
+
+Use tools to enforce good commit messages:
+
+- [commitlint](https://commitlint.js.org/) - Enforces conventional commit format
+- [git-good-commit](https://github.com/tommarshall/git-good-commit) - Git hook for commit message validation
+
+### Style Guides
+
+- [Conventional Commits](https://www.conventionalcommits.org/) - Standard commit format
+- [Git commit message guidelines (kernel)](https://git.kernel.org/pub/scm/git/git.git/tree/Documentation/SubmittingPatches#n133) - Linux kernel standards
+- [How to Write a Git Commit Message](https://chris.beams.io/posts/git-commit/) - Classic article
+
+## Examples from Real Projects
+
+### Linux Kernel
+
+```bash
+fix: correct GPIO mapping bug in BCM2835 driver
+
+The GPIO pin mapping for pins 23-27 was incorrect due to
+a typo in the register offset calculation. This caused
+GPIO operations on these pins to fail silently.
+
+Corrected the register offset from 0x20 to 0x24.
+
+Tested on Raspberry Pi 4 Model B.
+```
+
+### Node.js
+
+```bash
+fix: prevent memory leak in HTTP keep-alive connections
+
+HTTP connections with keep-alive enabled were not being
+properly released when the connection was closed by the
+remote peer. This caused the connection pool to grow
+unbounded, eventually exhausting file descriptors.
+
+Now explicitly destroys sockets when the peer closes.
+
+Fixes: https://github.com/nodejs/node/issues/12345
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Basic Usage" icon="play" href="/guides/basic-usage">
+    Learn the fundamentals of using gitGost
+  </Card>
+  
+  <Card title="Anonymous Push" icon="ghost" href="/guides/anonymous-push">
+    Understand how metadata is stripped
+  </Card>
+  
+  <Card title="Tor Integration" icon="shield" href="/guides/tor-integration">
+    Hide your IP address with Tor
+  </Card>
+  
+  <Card title="Threat Model" icon="shield-exclamation" href="/security/threat-model">
+    Understand anonymity guarantees
+  </Card>
+</CardGroup>

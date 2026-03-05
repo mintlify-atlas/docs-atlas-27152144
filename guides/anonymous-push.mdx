@@ -1,0 +1,441 @@
+---
+title: 'Anonymous Push'
+description: 'Understand how gitGost anonymizes your contributions'
+icon: 'ghost'
+---
+
+## How Anonymous Push Works
+
+gitGost provides **strong anonymity** by stripping all identifying metadata from your commits before creating pull requests. This guide explains the technical process and what gets anonymized.
+
+<Warning>
+gitGost provides strong anonymity features, but not **perfect** anonymity. See the [Threat Model](/security/threat-model) for details on what is and isn't protected.
+</Warning>
+
+## The Push Workflow
+
+<Steps>
+  <Step title="Client sends packfile">
+    When you run `git push gost`, your Git client packages commits into a **packfile** using the Smart HTTP protocol:
+    
+    ```bash
+    git push gost my-branch:main
+    ```
+    
+    The packfile contains:
+    - Commit objects (with your original author/committer info)
+    - Tree objects (file structure)
+    - Blob objects (file contents)
+    - Parent commit references
+  </Step>
+
+  <Step title="gitGost receives and extracts">
+    The server extracts the packfile from the Git protocol wrapper:
+    
+    ```go
+    // From internal/git/receive.go
+    func ExtractPackfile(body []byte) ([]byte, *RefUpdate, string, error) {
+        // Parse pkt-line protocol
+        // Extract ref updates (old SHA → new SHA)
+        // Locate PACK signature and extract packfile
+        // Parse push-options (e.g., pr-hash)
+    }
+    ```
+  </Step>
+
+  <Step title="Commits are unpacked">
+    gitGost unpacks your commits into a temporary repository:
+    
+    ```go
+    // Clone base repository
+    git.PlainClone(tempDir, false, &git.CloneOptions{
+        URL: repoURL,
+    })
+    
+    // Unpack received objects
+    cmd := exec.Command("git", "index-pack", "--stdin", "--fix-thin")
+    cmd.Stdin = bytes.NewReader(packfile)
+    ```
+  </Step>
+
+  <Step title="Metadata is anonymized">
+    Every commit is rewritten with anonymous author/committer signatures:
+    
+    ```go
+    // From internal/git/receive.go:337-341
+    anonSignature := object.Signature{
+        Name:  "@gitgost-anonymous",
+        Email: "anonymous@gitgost.local",
+        When:  time.Now(),
+    }
+    
+    newCommit := &object.Commit{
+        Author:       anonSignature,
+        Committer:    anonSignature,
+        Message:      commit.Message,  // Preserved!
+        TreeHash:     commit.TreeHash,
+        ParentHashes: newParents,
+    }
+    ```
+    
+    <Note>
+    Your commit **message** is preserved—only identity metadata is stripped.
+    </Note>
+  </Step>
+
+  <Step title="Fork is created">
+    A fork is created under the `@gitgost-anonymous` account:
+    
+    ```go
+    // From internal/github/pr.go:431-502
+    func ForkRepo(owner, repo string) (string, error) {
+        // Check if fork exists
+        // Create fork if needed
+        // Return fork owner (@gitgost-anonymous)
+    }
+    ```
+  </Step>
+
+  <Step title="Anonymized commits are pushed">
+    The rewritten commits are pushed to a unique branch in the fork:
+    
+    ```go
+    // From internal/git/push.go:22-80
+    func PushToGitHub(owner, repo, tempDir, forkOwner, targetBranch string) {
+        branch := targetBranch
+        if branch == "" {
+            timestamp := time.Now().Unix()
+            branch = fmt.Sprintf("gitgost-%d", timestamp)
+        }
+        
+        // Push with force if updating existing branch
+        r.Push(&git.PushOptions{
+            RemoteName: "fork",
+            RefSpecs:   []config.RefSpec{refSpec},
+            Force:      targetBranch != "",
+        })
+    }
+    ```
+  </Step>
+
+  <Step title="PR is opened">
+    A pull request is created from the fork to the original repository:
+    
+    ```go
+    // From internal/github/pr.go:550-604
+    func CreatePR(owner, repo, branch, forkOwner, commitMessage string) {
+        prBody := fmt.Sprintf(
+            "%s\n\n---\n\n*This is an anonymous contribution made via gitGost.*",
+            commitMessage,
+        )
+        
+        data := map[string]interface{}{
+            "title": "Anonymous contribution via gitGost",
+            "head":  fmt.Sprintf("%s:%s", forkOwner, branch),
+            "base":  "main",
+            "body":  prBody,
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+## What Gets Anonymized
+
+### ✅ Stripped Metadata
+
+<AccordionGroup>
+  <Accordion title="Author Name & Email">
+    ```diff
+    - Author: John Doe <john@example.com>
+    + Author: @gitgost-anonymous <anonymous@gitgost.local>
+    ```
+    
+    Your name and email are replaced in all commits.
+  </Accordion>
+
+  <Accordion title="Committer Name & Email">
+    ```diff
+    - Committer: John Doe <john@example.com>
+    + Committer: @gitgost-anonymous <anonymous@gitgost.local>
+    ```
+    
+    Even if you amended commits, the committer is anonymized.
+  </Accordion>
+
+  <Accordion title="Timestamps">
+    ```diff
+    - Date: Thu Feb 15 14:32:18 2024 -0500
+    + Date: Thu Mar 05 18:45:03 2026 +0000
+    ```
+    
+    Original timestamps are replaced with the server's current time to prevent timezone-based identification.
+  </Accordion>
+
+  <Accordion title="GitHub Account Association">
+    PRs appear from `@gitgost-anonymous`, not your personal account. No link between your GitHub profile and the contribution.
+  </Accordion>
+</AccordionGroup>
+
+### ✅ Preserved Data
+
+<AccordionGroup>
+  <Accordion title="Commit Messages">
+    Your commit messages are **preserved exactly** as written and used as the PR description. Write them carefully—see [commit message best practices](/guides/commit-messages).
+  </Accordion>
+
+  <Accordion title="Code Changes">
+    The actual diff (added/removed lines) is preserved. This is necessary for the PR to be useful.
+  </Accordion>
+
+  <Accordion title="File Structure">
+    The tree structure (which files were modified) is preserved.
+  </Accordion>
+
+  <Accordion title="Commit History">
+    If you push multiple commits, the commit graph structure is preserved (parent relationships), but all metadata is anonymized.
+  </Accordion>
+</AccordionGroup>
+
+## What gitGost Does NOT Anonymize
+
+<Warning>
+**IP Address**: Your IP is visible to the gitGost server. Use [Tor integration](/guides/tor-integration) to hide your IP.
+</Warning>
+
+<Warning>
+**Code Style**: Your coding style, variable naming, and comments can be analyzed (stylometry). Avoid unique patterns if full anonymity is critical.
+</Warning>
+
+<Warning>
+**Timing Patterns**: Push timing can correlate with your timezone or activity patterns. Use irregular timing if avoiding correlation is important.
+</Warning>
+
+## Commit Rewriting Details
+
+### Recursive Parent Rewriting
+
+When you push multiple commits, gitGost recursively rewrites the entire chain:
+
+```go
+// From internal/git/receive.go:306-334
+func rewriteCommit(r *git.Repository, commit *object.Commit, 
+                   commitMap map[plumbing.Hash]plumbing.Hash,
+                   baseCommits map[plumbing.Hash]bool) {
+    // Skip commits already in the base repository
+    if baseCommits[commit.Hash] {
+        return commit.Hash, nil
+    }
+    
+    // Rewrite parents first (depth-first)
+    var newParents []plumbing.Hash
+    for _, parentHash := range commit.ParentHashes {
+        newParentHash := rewriteCommit(r, parentCommit, ...)
+        newParents = append(newParents, newParentHash)
+    }
+    
+    // Create anonymized commit with rewritten parents
+    newCommit := &object.Commit{
+        Author:       anonSignature,
+        Committer:    anonSignature,
+        Message:      commit.Message,
+        TreeHash:     commit.TreeHash,
+        ParentHashes: newParents,
+    }
+}
+```
+
+### Base Commit Detection
+
+gitGost only rewrites **new** commits (your changes), not existing commits from the target repository:
+
+```go
+// From internal/git/receive.go:272-283
+baseCommits := make(map[plumbing.Hash]bool)
+originMain, err := r.Reference(plumbing.NewRemoteReferenceName("origin", "main"), true)
+if err == nil {
+    iter, _ := r.Log(&git.LogOptions{From: originMain.Hash()})
+    iter.ForEach(func(c *object.Commit) error {
+        baseCommits[c.Hash] = true  // Mark as base
+        return nil
+    })
+}
+```
+
+This ensures:
+- Only your new commits are rewritten
+- Existing repository history remains unchanged
+- Parent references stay correct
+
+## Example: Before and After
+
+### Original Commit (Your Local Repository)
+
+```bash
+commit 9f3a7c8e4d2b1a0f5e6c7d8e9f0a1b2c3d4e5f6a
+Author: Jane Smith <jane.smith@company.com>
+Committer: Jane Smith <jane.smith@company.com>
+Date:   Wed Mar 04 2026 15:23:45 -0800
+
+    fix: correct API endpoint timeout
+    
+    The previous timeout of 5s was too short for slow networks.
+    Increased to 30s with exponential backoff.
+```
+
+### Anonymized Commit (In Fork)
+
+```bash
+commit a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0
+Author: @gitgost-anonymous <anonymous@gitgost.local>
+Committer: @gitgost-anonymous <anonymous@gitgost.local>
+Date:   Thu Mar 05 2026 23:45:12 +0000
+
+    fix: correct API endpoint timeout
+    
+    The previous timeout of 5s was too short for slow networks.
+    Increased to 30s with exponential backoff.
+```
+
+**Notice**:
+- Author/Committer changed to `@gitgost-anonymous`
+- Email changed to `anonymous@gitgost.local`
+- Timestamp changed to server time (UTC)
+- Commit SHA changed (since metadata changed)
+- **Message preserved exactly**
+
+## Edge Cases and Limitations
+
+### Multiple Commits
+
+Pushing multiple commits works correctly:
+
+```bash
+git checkout -b feature
+git commit -m "feat: add new API endpoint"
+git commit -m "docs: update API documentation"
+git commit -m "test: add endpoint tests"
+git push gost feature:main
+```
+
+All three commits are anonymized while preserving their relationship.
+
+### Merge Commits
+
+Merge commits are supported—both parents are rewritten:
+
+```bash
+git merge another-branch
+git push gost merged-feature:main
+```
+
+### Large Commits
+
+Commits over **10 MB** are rejected:
+
+```bash
+remote: error: commit size exceeds 10 MB limit
+```
+
+**Solution**: Split large changes into multiple smaller commits.
+
+### Binary Files
+
+Binary files are supported, but count toward the 10 MB commit limit.
+
+## Security Considerations
+
+<CardGroup cols={2}>
+  <Card title="Server Trust" icon="server">
+    You must trust the gitGost server not to log your IP. Use [Tor](/guides/tor-integration) if you need to eliminate this trust requirement.
+  </Card>
+  
+  <Card title="Code Analysis" icon="magnifying-glass">
+    Advanced adversaries can analyze code style, commit patterns, and timing to potentially identify you. gitGost protects against **casual** identification, not targeted forensics.
+  </Card>
+  
+  <Card title="GitHub Metadata" icon="github">
+    GitHub may log the IP of the `@gitgost-anonymous` bot account (the server's IP), but not yours—unless you access the PR URL directly without Tor Browser.
+  </Card>
+  
+  <Card title="Commit Messages" icon="message">
+    Don't include personally identifiable information in commit messages. Avoid phrases like "I always use..." or references to your company/location.
+  </Card>
+</CardGroup>
+
+## Rate Limiting and Abuse Prevention
+
+gitGost tracks pushes per IP address:
+
+```go
+// From internal/http/handlers.go:733-759
+func checkRateLimit(ip string) bool {
+    now := time.Now()
+    rateLimitMu.Lock()
+    times := rateLimitStore[ip]
+    
+    // Keep only timestamps within the window
+    valid := times[:0]
+    for _, t := range times {
+        if now.Sub(t) < rateLimitWindow {  // 1 hour
+            valid = append(valid, t)
+        }
+    }
+    valid = append(valid, now)
+    rateLimitStore[ip] = valid
+    count := len(valid)
+    rateLimitMu.Unlock()
+    
+    return count > rateLimitMaxPRs  // 5 PRs
+}
+```
+
+If you exceed 5 PRs/hour:
+
+```bash
+remote: Rate limit exceeded: max 5 PRs per hour per IP.
+remote: Please try again later.
+```
+
+<Tip>
+Use [Tor integration](/guides/tor-integration) to rotate your exit node if you need to contribute to multiple projects rapidly.
+</Tip>
+
+## Temporary Repository Cleanup
+
+All temporary data is deleted after the push:
+
+```go
+// From internal/http/handlers.go:194-200
+tempDir, err := utils.CreateTempDir()
+if err != nil {
+    return err
+}
+defer utils.CleanupTempDir(tempDir)  // Always cleanup
+```
+
+gitGost does **not** store:
+- Your packfile
+- Original commit metadata
+- Git history
+- Any persistent state about your push
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Tor Integration" icon="shield" href="/guides/tor-integration">
+    Hide your IP address from the gitGost server
+  </Card>
+  
+  <Card title="Commit Messages" icon="message" href="/guides/commit-messages">
+    Write effective commit messages for anonymous PRs
+  </Card>
+  
+  <Card title="Threat Model" icon="shield-exclamation" href="/security/threat-model">
+    Understand what gitGost protects against
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api-reference/git/receive-pack">
+    Technical protocol details
+  </Card>
+</CardGroup>

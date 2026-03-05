@@ -1,0 +1,437 @@
+---
+title: 'Anonymous Pull Requests'
+description: 'Create anonymous pull requests via Git push protocol'
+icon: 'git-pull-request'
+---
+
+## Overview
+
+GitGost enables truly anonymous pull requests by accepting pushes via the standard Git protocol (`git-receive-pack`) and automatically creating PRs through a bot account. Your identity is completely anonymized—no trace remains in the commit history.
+
+## How It Works
+
+The anonymous PR workflow follows these steps:
+
+1. **Push via Git**: You push commits to gitGost using standard Git commands
+2. **Fork Creation**: gitGost creates/reuses a fork under the `@gitgost-anonymous` bot account
+3. **Commit Anonymization**: All commit metadata (author, committer, email) is rewritten to anonymous values
+4. **Branch Push**: Commits are pushed to a unique branch (e.g., `gitgost-a1b2c3d4`) in the fork
+5. **PR Creation**: A pull request is automatically created from the fork to the original repository
+6. **Notification**: You receive a unique PR hash to track and update your contribution
+
+## Endpoint
+
+### Git Protocol Endpoints
+
+<CodeGroup>
+```bash Discovery (info/refs)
+GET /v1/gh/:owner/:repo/info/refs?service=git-receive-pack
+```
+
+```bash Push (receive-pack)
+POST /v1/gh/:owner/:repo/git-receive-pack
+```
+</CodeGroup>
+
+## Authentication
+
+<Note>
+**No authentication required.** Anonymous contributions are the core feature—no GitHub account, API keys, or credentials needed.
+</Note>
+
+## Usage
+
+### Setting Up the Remote
+
+Add gitGost as a Git remote to your repository:
+
+<CodeGroup>
+```bash Standard Push
+git remote add gost https://gitgost.leapcell.app/v1/gh/OWNER/REPO.git
+git push gost main
+```
+
+```bash Update Existing PR
+# Use the pr-hash returned from your first push
+git push gost main -o pr-hash=a1b2c3d4
+```
+</CodeGroup>
+
+### Creating Your First Anonymous PR
+
+<Steps>
+  <Step title="Clone and make changes">
+    ```bash
+    git clone https://github.com/owner/repo.git
+    cd repo
+    # Make your changes
+    git add .
+    git commit -m "Fix: resolve issue #123"
+    ```
+  </Step>
+  
+  <Step title="Add gitGost remote">
+    ```bash
+    git remote add gost https://gitgost.leapcell.app/v1/gh/owner/repo.git
+    ```
+  </Step>
+  
+  <Step title="Push to gitGost">
+    ```bash
+    git push gost main
+    ```
+  </Step>
+  
+  <Step title="Receive PR details">
+    ```
+    remote: gitGost: Processing your anonymous contribution...
+    remote: gitGost: Commits anonymized successfully
+    remote: gitGost: Creating fork...
+    remote: gitGost: Fork ready at gitgost-anonymous/repo
+    remote: gitGost: Pushing to fork...
+    remote: gitGost: Branch 'gitgost-a1b2c3d4' created
+    remote: gitGost: Creating pull request...
+    remote: 
+    remote: ========================================
+    remote: SUCCESS! Pull Request Created
+    remote: ========================================
+    remote: 
+    remote: PR URL: https://github.com/owner/repo/pull/42
+    remote: Author: @gitgost-anonymous
+    remote: Branch: gitgost-a1b2c3d4
+    remote: PR Hash: a1b2c3d4
+    remote: 
+    remote: Subscribe to PR notifications (no account needed):
+    remote:   https://ntfy.sh/gitgost-a1b2c3d4
+    remote: 
+    remote: To update this PR on future pushes, use:
+    remote:   git push gost main -o pr-hash=a1b2c3d4
+    remote: 
+    remote: Your identity has been anonymized.
+    remote: No trace to you remains in the commit history.
+    remote: ========================================
+    ```
+  </Step>
+</Steps>
+
+### Updating an Existing PR
+
+To push additional commits to an existing PR, use the `pr-hash` push option:
+
+```bash
+git commit -m "Address review feedback"
+git push gost main -o pr-hash=a1b2c3d4
+```
+
+<Info>
+The PR hash is deterministic and based on `owner/repo/branch`. You'll receive the same hash for the same branch, enabling updates without storing state.
+</Info>
+
+## Response Format
+
+### Successful Push
+
+The response follows the Git protocol format using side-band encoding:
+
+- **Band 1**: Protocol status messages (`unpack ok`, `ok refs/heads/main`)
+- **Band 2**: Informational messages (progress, success details)
+- **Band 3**: Error messages (if any)
+
+### Success Fields
+
+<ResponseField name="pr_url" type="string" required>
+  The GitHub URL of the created pull request
+</ResponseField>
+
+<ResponseField name="author" type="string" required>
+  Always `@gitgost-anonymous` - the bot account
+</ResponseField>
+
+<ResponseField name="branch" type="string" required>
+  The fork branch name (format: `gitgost-{hash}`)
+</ResponseField>
+
+<ResponseField name="pr_hash" type="string" required>
+  8-character deterministic hash for tracking and updates
+</ResponseField>
+
+<ResponseField name="ntfy_topic" type="string" required>
+  Notification topic URL (format: `https://ntfy.sh/gitgost-{pr_hash}`)
+</ResponseField>
+
+## PR Metadata
+
+### PR Title
+
+```
+Anonymous contribution via gitGost
+```
+
+### PR Body
+
+The PR body includes:
+- Your commit message(s)
+- A disclaimer about anonymous contribution
+- Link to gitGost service
+
+**Example:**
+```markdown
+Fix: resolve issue #123
+
+This patch addresses the memory leak reported in issue #123.
+
+---
+
+*This is an anonymous contribution made via [gitGost](https://gitgost.leapcell.app).*
+
+*The original author's identity has been anonymized to protect their privacy.*
+```
+
+### Commit Anonymization
+
+All commits are rewritten with:
+- **Author**: `Anonymous Contributor <anonymous@gitgost.dev>`
+- **Committer**: `gitGost Service <service@gitgost.dev>`
+- **Commit Date**: Preserved from original (optional: can be anonymized)
+
+## Notifications
+
+GitGost provides real-time notifications via [ntfy.sh](https://ntfy.sh) without requiring accounts:
+
+<CodeGroup>
+```bash Subscribe via curl
+curl -s https://ntfy.sh/gitgost-a1b2c3d4/json
+```
+
+```bash Subscribe in browser
+# Open in your browser:
+https://ntfy.sh/gitgost-a1b2c3d4
+```
+
+```bash Mobile app (ntfy)
+# Subscribe to topic: gitgost-a1b2c3d4
+```
+</CodeGroup>
+
+### Notification Events
+
+- **PR Created**: Initial notification when PR is opened
+- **PR Updated**: Sent when you push updates using the pr-hash
+- **PR Comments**: Not currently implemented (future feature)
+- **PR Status Changes**: Not currently implemented (future feature)
+
+## Rate Limiting
+
+<Warning>
+Rate limits protect against abuse while allowing legitimate use.
+</Warning>
+
+### Per-IP Limits
+
+<ParamField path="limit" type="number" default="5">
+  Maximum PRs per hour per IP address
+</ParamField>
+
+<ParamField path="window" type="duration" default="1h">
+  Rolling time window for rate limit
+</ParamField>
+
+### Global Burst Detection
+
+GitGost monitors for coordinated abuse:
+
+- **Threshold**: 20 pushes from 10+ distinct IPs in 60 seconds
+- **Response**: Admin notification, optional panic mode activation
+- **Recovery**: Automatic when activity drops below threshold
+
+### Rate Limit Response
+
+When rate limited, you'll receive:
+
+```
+remote: 
+remote: Rate limit exceeded: max 5 PRs per hour per IP.
+remote: Please try again later.
+remote: 
+push rejected: rate limit exceeded
+```
+
+## Error Responses
+
+### Invalid Repository
+
+```
+error: invalid repo name
+```
+
+<ResponseField name="cause" type="string">
+  Repository name contains invalid characters or path traversal attempts
+</ResponseField>
+
+### Fork Creation Failed
+
+```
+remote: gitGost: Creating fork...
+remote: error creating fork: failed to create fork: 404 Not Found
+push rejected
+```
+
+<ResponseField name="cause" type="string">
+  Target repository doesn't exist or bot lacks access
+</ResponseField>
+
+### Push Too Large
+
+```
+error: RPC failed; HTTP 413 Request Entity Too Large
+```
+
+<ParamField path="max_size" type="number" default="104857600">
+  Maximum push size: 100 MB
+</ParamField>
+
+### Service Suspended (Panic Mode)
+
+```
+remote: 
+remote: SERVICE TEMPORARILY SUSPENDED
+remote: 
+remote: The panic button has been activated. The service has been
+remote: temporarily suspended due to detected bot activity
+remote: sending mass PRs. Please try again in 15 minutes.
+remote: 
+push rejected: service temporarily suspended
+```
+
+<ResponseField name="cause" type="string">
+  Admin activated panic mode due to abuse detection
+</ResponseField>
+
+<ResponseField name="duration" type="string">
+  Typically 15 minutes, manually controlled by admin
+</ResponseField>
+
+## Implementation Details
+
+### Fork Management
+
+The bot reuses existing forks when possible:
+
+1. Check if fork `gitgost-anonymous/repo` exists
+2. If exists, reuse it; otherwise create new fork
+3. Wait for fork to be ready (forks are async on GitHub)
+
+**Source Reference**: `internal/github/pr.go:430-503`
+
+### PR Hash Generation
+
+PR hashes are deterministic SHA-256 hashes:
+
+```go
+input := fmt.Sprintf("%s/%s/%s", owner, repo, branch)
+sum := sha256.Sum256([]byte(input))
+prHash := hex.EncodeToString(sum[:])[:8]
+```
+
+**Source Reference**: `internal/github/pr.go:656-662`
+
+### Branch Naming
+
+Branches follow the format: `gitgost-{pr_hash}`
+
+- Deterministic and unique per repository/branch combination
+- Allows automatic PR updates without state storage
+- Example: `gitgost-a1b2c3d4`
+
+## Security Considerations
+
+<CardGroup cols={2}>
+  <Card title="Identity Protection" icon="mask">
+    All commit metadata is rewritten. No IP addresses, usernames, or identifying information is logged.
+  </Card>
+  
+  <Card title="Rate Limiting" icon="shield">
+    Multiple layers of rate limiting prevent abuse while maintaining anonymity.
+  </Card>
+  
+  <Card title="Abuse Prevention" icon="ban">
+    Burst detection and panic mode protect against coordinated attacks.
+  </Card>
+  
+  <Card title="Open Source" icon="code">
+    100% open source and auditable. No hidden tracking or data collection.
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use meaningful commit messages">
+    Since your commits become the PR body, write clear, descriptive messages:
+    
+    ```bash
+    # Good
+    git commit -m "Fix memory leak in worker pool\n\nAdds proper cleanup of goroutines when pool is closed."
+    
+    # Bad
+    git commit -m "fix stuff"
+    ```
+  </Accordion>
+  
+  <Accordion title="Save your PR hash">
+    Store the PR hash in a safe place to enable future updates:
+    
+    ```bash
+    # Save to a local file
+    echo "a1b2c3d4" > .pr-hash
+    
+    # Reference it later
+    git push gost main -o pr-hash=$(cat .pr-hash)
+    ```
+  </Accordion>
+  
+  <Accordion title="Subscribe to notifications">
+    Use ntfy to track your PR without creating accounts:
+    
+    - Bookmark the ntfy URL
+    - Install ntfy mobile app for push notifications
+    - Use RSS reader with ntfy's RSS endpoint
+  </Accordion>
+  
+  <Accordion title="Respect rate limits">
+    Avoid rapid successive pushes:
+    
+    - Test locally before pushing
+    - Squash multiple fixes into single commits
+    - Wait between pushes if making frequent contributions
+  </Accordion>
+</AccordionGroup>
+
+## CLI Integration
+
+### Bash Alias
+
+```bash ~/.bashrc
+alias anon-push='git push gost main'
+alias anon-update='git push gost main -o pr-hash=$(cat .pr-hash)'
+```
+
+### Git Configuration
+
+```bash
+# Set default push options
+git config remote.gost.pushOption pr-hash=a1b2c3d4
+
+# Always push to gost by default for this repo
+git config remote.pushDefault gost
+```
+
+## Related Endpoints
+
+<Card title="Anonymous Issues" icon="circle-exclamation" href="/api/anonymous-issues">
+  Create anonymous issues via REST API
+</Card>
+
+<Card title="Anonymous Comments" icon="comment" href="/api/anonymous-comments">
+  Post anonymous comments on issues and PRs
+</Card>

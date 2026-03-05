@@ -1,0 +1,480 @@
+---
+title: Moderation
+description: Moderate abusive activity and control service availability
+icon: gavel
+---
+
+# Moderating gitGost
+
+GitGost provides moderation tools to combat abuse while preserving user privacy.
+
+## Panic Button
+
+The **panic button** immediately suspends all push operations when abuse is detected.
+
+### How It Works
+
+When activated:
+- ✅ Service continues running (health checks pass)
+- ❌ All push operations are rejected
+- 📢 Users see suspension message
+- 🔄 Can be toggled on/off instantly
+
+### Activate Panic Mode
+
+Suspend the service immediately:
+
+```bash
+curl -X POST https://gitgost.leapcell.app/admin/panic \
+  -H "Content-Type: application/json" \
+  -d '{"password":"YOUR_PANIC_PASSWORD","active":true}'
+```
+
+**Response:**
+
+```json
+{
+  "panic_mode": true,
+  "state": "activated"
+}
+```
+
+### Deactivate Panic Mode
+
+Restore normal service:
+
+```bash
+curl -X POST https://gitgost.leapcell.app/admin/panic \
+  -H "Content-Type: application/json" \
+  -d '{"password":"YOUR_PANIC_PASSWORD","active":false}'
+```
+
+**Response:**
+
+```json
+{
+  "panic_mode": false,
+  "state": "deactivated"
+}
+```
+
+<Warning>
+**Security**: Store `PANIC_PASSWORD` securely. Anyone with this password can control service availability. Use a strong, randomly generated password.
+</Warning>
+
+### Shell Aliases for Quick Access
+
+Add to `~/.zshrc` or `~/.bashrc` for instant access:
+
+```bash
+export PANIC_PASSWORD="your-secure-password-here"
+
+alias gitgost-suspend='curl -s -X POST https://gitgost.leapcell.app/admin/panic \
+  -H "Content-Type: application/json" \
+  -d "{\"password\":\"$PANIC_PASSWORD\",\"active\":true}"'
+
+alias gitgost-restore='curl -s -X POST https://gitgost.leapcell.app/admin/panic \
+  -H "Content-Type: application/json" \
+  -d "{\"password\":\"$PANIC_PASSWORD\",\"active\":false}"'
+```
+
+**Usage:**
+
+```bash
+# Suspend service
+gitgost-suspend
+
+# Restore service
+gitgost-restore
+```
+
+## User Experience During Suspension
+
+When users attempt to push while panic mode is active:
+
+```
+remote: 
+remote: SERVICE TEMPORARILY SUSPENDED
+remote: 
+remote: The panic button has been activated. The service has been
+remote: temporarily suspended due to detected bot activity
+remote: sending mass PRs. Please try again in 15 minutes.
+remote: 
+! [remote rejected] main -> main (push rejected: service temporarily suspended)
+error: failed to push some refs
+```
+
+From `internal/http/handlers.go:142-157`:
+
+<Accordion title="Implementation Details">
+The panic mode check occurs early in the push handler, before any processing:
+
+```go
+if isPanicMode() {
+    c.Writer.Header().Set("Content-Type", "application/x-git-receive-pack-result")
+    c.Writer.WriteHeader(http.StatusOK)
+    var errResp bytes.Buffer
+    WriteSidebandLine(&errResp, 2, "remote: ")
+    WriteSidebandLine(&errResp, 2, "remote: SERVICE TEMPORARILY SUSPENDED")
+    WriteSidebandLine(&errResp, 2, "remote: ")
+    WriteSidebandLine(&errResp, 2, "remote: The panic button has been activated...")
+    // ...
+    return
+}
+```
+
+This ensures zero resource consumption for suspended requests.
+</Accordion>
+
+## Burst Rollback
+
+When bot attacks create many PRs, you can close them all in bulk.
+
+### How Burst Rollback Works
+
+<Steps>
+  <Step title="Detection">
+    GitGost monitors push activity globally across all IPs. When suspicious patterns emerge:
+    - 20+ pushes within 60 seconds, OR
+    - 10+ distinct IPs pushing simultaneously
+    
+    An alert is sent via ntfy with action buttons.
+  </Step>
+  
+  <Step title="PR Tracking">
+    During the burst window (2 hours), all PR URLs are tracked in memory.
+  </Step>
+  
+  <Step title="Rollback">
+    Trigger rollback to close all tracked PRs in parallel.
+  </Step>
+</Steps>
+
+### Execute Rollback
+
+```bash
+curl -X POST https://gitgost.leapcell.app/admin/rollback \
+  -H "Content-Type: application/json" \
+  -d '{"password":"YOUR_PANIC_PASSWORD"}'
+```
+
+**Response:**
+
+```json
+{
+  "closed": 12,
+  "failed": 0,
+  "closed_urls": [
+    "https://github.com/owner/repo/pull/123",
+    "https://github.com/owner/repo/pull/124",
+    "https://github.com/owner/repo/pull/125"
+  ],
+  "failed_urls": []
+}
+```
+
+<Tip>
+**Rollback Window**: Only PRs created within the last 2 hours are closed. Older PRs are unaffected.
+</Tip>
+
+### Rollback Rate Limiting
+
+To prevent abuse of the rollback endpoint:
+- **Maximum**: 5 rollback requests per minute per IP
+- **Response**: `429 Too Many Requests` if exceeded
+
+From `internal/http/handlers.go:844-860`
+
+## ntfy Alert Integration
+
+Real-time alerts help you respond quickly to abuse.
+
+### Configure ntfy Alerts
+
+```bash
+# In your environment or .env file
+export NTFY_ADMIN_TOPIC="secret-admin-channel-xyz"
+export PANIC_PASSWORD="your-secure-password"
+```
+
+<Warning>
+**Keep Secret**: The ntfy admin topic is essentially an API key. Anyone who knows it can receive your alerts. Use a long, random string.
+</Warning>
+
+### Alert Types
+
+#### 1. Rate Limit Exceeded
+
+Triggered when a single IP exceeds 5 PRs/hour:
+
+```
+⚠️ Rate limit exceeded · gitGost
+
+IP 192.0.2.10 exceeded the limit of 5 PRs/hour (attempts: 6).
+
+[Action Buttons]
+→ Activate Panic
+→ Close Burst PRs  
+→ Deactivate Panic
+```
+
+#### 2. Suspicious Burst Activity
+
+Triggered during coordinated attacks:
+
+```
+🚨 Suspicious activity detected · gitGost
+
+20 push attempts from 10 distinct IPs in the last 60s. 
+This may indicate bot, script, or coordinated abuse.
+
+[Action Buttons]
+→ Activate Panic
+→ Close Burst PRs
+→ Deactivate Panic
+```
+
+From `internal/http/handlers.go:707-730`
+
+### ntfy Action Buttons
+
+Alerts include **single-use tokens** valid for 10 minutes:
+
+<Accordion title="How Action Tokens Work">
+- Each alert generates unique tokens per button
+- Tokens expire after 10 minutes
+- Tokens are consumed on first use
+- Prevents accidental double-triggers
+- Never exposes your `PANIC_PASSWORD` in notifications
+
+**Implementation**: `internal/http/handlers.go:617-641`
+
+```go
+func newActionToken() string {
+    b := make([]byte, 16)
+    rand.Read(b)
+    token := hex.EncodeToString(b)
+    expiry := time.Now().Add(actionTokenTTL)
+    actionTokensMu.Lock()
+    actionTokens[token] = expiry
+    actionTokensMu.Unlock()
+    return token
+}
+```
+</Accordion>
+
+<Warning>
+**Token Expiry**: If action buttons stop working after 10 minutes, use the manual `curl` commands with your `PANIC_PASSWORD` instead.
+</Warning>
+
+### Subscribe to Alerts
+
+**On your phone:**
+
+1. Install [ntfy app](https://ntfy.sh) (iOS/Android)
+2. Subscribe to your topic: `https://ntfy.sh/secret-admin-channel-xyz`
+3. Enable notifications
+
+**In your browser:**
+
+Visit `https://ntfy.sh/secret-admin-channel-xyz`
+
+**Via command line:**
+
+```bash
+ntfy subscribe secret-admin-channel-xyz
+```
+
+## Hash Reporting System
+
+GitGost includes a karma-based identity system for anonymous comments on issues/PRs.
+
+### How It Works
+
+<Steps>
+  <Step title="Anonymous comment">
+    User posts comment anonymously, receives a unique hash (e.g., `goster-a3f7b9c2`)
+  </Step>
+  
+  <Step title="Karma tracking">
+    Each comment increases karma. Hash and karma are visible in comment footer.
+  </Step>
+  
+  <Step title="Report link">
+    Each comment includes a `[report]` link to report abusive content.
+  </Step>
+  
+  <Step title="Moderation action">
+    Reports trigger automated moderation:
+    - **0-2 reports**: Logged internally
+    - **3-5 reports**: Hash flagged, 6h cooldown, karma reset to 0
+    - **6+ reports**: Hash blocked, all comments deleted
+  </Step>
+</Steps>
+
+### Report Thresholds
+
+From `internal/http/handlers.go:610-614`:
+
+```go
+const (
+    reportWindow    = 30 * 24 * time.Hour  // 30 days
+    flaggedCooldown = 6 * time.Hour         // 6 hours
+)
+```
+
+| Reports | State | Action |
+|---------|-------|--------|
+| 0-2 | `registered` | Internal log only |
+| 3-5 | `flagged` | 6h cooldown, karma → 0 |
+| 6+ | `blocked` | Comments deleted, hash banned |
+
+### Report Workflow
+
+**User visits report link:**
+
+```
+https://gitgost.leapcell.app/v1/moderation/report?hash=a3f7b9c2
+```
+
+**UI shows:**
+- Current report count
+- Hash state (registered/flagged/blocked)
+- Moderation policy
+- Submit button (one report per IP)
+
+**After submission:**
+
+```html
+Report received
+Hash: a3f7b9c2
+Total reports: 4
+State: flagged
+
+Thanks for helping moderate. Your identity stays anonymous.
+```
+
+<Tip>
+**Privacy-Preserving**: Reports are rate-limited by IP but IPs are not logged long-term. The system balances abuse prevention with user privacy.
+</Tip>
+
+## Rate Limiting
+
+Multiple rate limits protect against abuse:
+
+### 1. Per-IP PR Rate Limit
+
+- **Limit**: 5 PRs per hour per IP
+- **Window**: Rolling 1-hour window
+- **Enforcement**: `internal/http/handlers.go:733-759`
+
+**User experience when exceeded:**
+
+```
+remote: Rate limit exceeded: max 5 PRs per hour per IP.
+remote: Please try again later.
+! [remote rejected] main -> main (push rejected: rate limit exceeded)
+```
+
+### 2. Admin Endpoint Rate Limit
+
+- **Limit**: 10 requests per minute per IP
+- **Applies to**: `/admin/panic`, `/admin/rollback`
+- **Enforcement**: `internal/http/router.go:22-46`
+
+### 3. Rollback Rate Limit
+
+- **Limit**: 5 rollback calls per minute
+- **Purpose**: Prevent accidental mass PR closures
+- **Enforcement**: `internal/http/handlers.go:844-860`
+
+## Moderation Best Practices
+
+<Card title="Response Workflow" icon="list-check">
+  **When you receive an alert:**
+  
+  1. **Assess severity**
+     - Single IP rate limit → Monitor, may be legitimate
+     - Burst from many IPs → Likely bot attack
+  
+  2. **Activate panic if needed**
+     - Tap action button OR use shell alias
+     - Stops attack immediately
+  
+  3. **Review created PRs**
+     - Check GitHub for spam PRs
+     - Verify if rollback is needed
+  
+  4. **Execute rollback**
+     - Close all burst PRs in one operation
+  
+  5. **Deactivate panic**
+     - Restore service once threat is neutralized
+  
+  6. **Post-mortem**
+     - Review logs for patterns
+     - Consider adjusting rate limits if needed
+</Card>
+
+### Prevention Tips
+
+- **Monitor trends**: Watch for gradual increases in push rates
+- **Test alerts**: Periodically test your ntfy subscription
+- **Document incidents**: Keep a log of abuse patterns
+- **Update rate limits**: Adjust thresholds based on traffic patterns
+
+## Moderation Commands Reference
+
+<Accordion title="Quick Command Reference">
+
+**Panic button:**
+
+```bash
+# Activate
+curl -X POST https://gitgost.leapcell.app/admin/panic \
+  -H "Content-Type: application/json" \
+  -d '{"password":"PASSWORD","active":true}'
+
+# Deactivate  
+curl -X POST https://gitgost.leapcell.app/admin/panic \
+  -H "Content-Type: application/json" \
+  -d '{"password":"PASSWORD","active":false}'
+```
+
+**Rollback burst:**
+
+```bash
+curl -X POST https://gitgost.leapcell.app/admin/rollback \
+  -H "Content-Type: application/json" \
+  -d '{"password":"PASSWORD"}'
+```
+
+**Check service status:**
+
+```bash
+curl https://gitgost.leapcell.app/api/status
+```
+
+**Using action tokens (from ntfy alerts):**
+
+```bash
+# Tokens are automatically embedded in action buttons
+# Manual usage if needed:
+curl -X POST https://gitgost.leapcell.app/admin/panic \
+  -H "Content-Type: application/json" \
+  -d '{"token":"SINGLE_USE_TOKEN","active":true}'
+```
+
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Monitoring" icon="chart-line" href="/operations/monitoring">
+    Set up health checks and metrics monitoring
+  </Card>
+  
+  <Card title="Troubleshooting" icon="wrench" href="/operations/troubleshooting">
+    Diagnose and fix common operational issues
+  </Card>
+</CardGroup>

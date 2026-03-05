@@ -1,0 +1,182 @@
+---
+title: System Requirements
+description: Hardware, software, and service requirements for deploying gitGost
+---
+
+## Overview
+
+gitGost is a lightweight Go service designed for anonymous GitHub contributions. This page outlines the minimum and recommended system requirements for self-hosting.
+
+## Software Requirements
+
+<Steps>
+  <Step title="Go Runtime">
+    **Required version:** Go 1.22 or higher
+    
+    gitGost is built with Go 1.22 as specified in `go.mod`. Ensure you have this version or newer installed.
+    
+    ```bash
+    go version
+    # Expected output: go version go1.22.x linux/amd64 (or higher)
+    ```
+  </Step>
+
+  <Step title="Git">
+    **Required version:** Git 2.x or higher
+    
+    Git must be available in the system PATH for Smart HTTP protocol operations (receive-pack, upload-pack).
+    
+    ```bash
+    git --version
+    # Expected output: git version 2.x.x
+    ```
+  </Step>
+
+  <Step title="Operating System">
+    gitGost runs on any platform that supports Go 1.22:
+    
+    - **Linux** (recommended for production)
+    - **macOS**
+    - **Windows** (via native or WSL2)
+    - **Docker** (see [Docker Deployment](/deployment/docker))
+  </Step>
+</Steps>
+
+## Required Environment Variables
+
+<Warning>
+  These variables MUST be configured before starting the service.
+</Warning>
+
+### GitHub Token
+
+<ParamField path="GITHUB_TOKEN" type="string" required>
+  GitHub personal access token with `repo` permissions.
+  
+  **How to get one:**
+  1. Visit https://github.com/settings/tokens
+  2. Generate a new token (classic)
+  3. Select the `repo` scope (full control of private repositories)
+  4. Copy the token and set it as an environment variable
+  
+  **Security:** Store this securely. Never commit it to version control.
+</ParamField>
+
+### Supabase Configuration (Recommended)
+
+<ParamField path="SUPABASE_URL" type="string">
+  Supabase project URL for persistent statistics storage.
+  
+  Format: `https://your-project.supabase.co`
+  
+  Get from: https://supabase.com/dashboard
+</ParamField>
+
+<ParamField path="SUPABASE_KEY" type="string">
+  Supabase API key (anon/public key).
+  
+  **Note:** If Supabase is not configured, gitGost will start with a warning and stats will not be persisted.
+</ParamField>
+
+### Panic Button (Production)
+
+<ParamField path="PANIC_PASSWORD" type="string">
+  Strong password to activate/deactivate service suspension via `/admin/panic`.
+  
+  **Critical for production:** Set this to a strong, unique password. Never leave it blank.
+</ParamField>
+
+See [Environment Variables Reference](/deployment/environment-variables) for all configuration options.
+
+## Network Requirements
+
+### Ports
+
+- **Default port:** `8080` (configurable via `PORT` environment variable)
+- **Inbound:** Must accept HTTP/HTTPS traffic on the configured port
+- **Outbound:** Must have access to:
+  - `github.com` (GitHub API, port 443)
+  - `supabase.co` (if using Supabase, port 443)
+  - `ntfy.sh` (if using ntfy notifications, port 443)
+
+### Firewall Rules
+
+```bash
+# Allow inbound HTTP/HTTPS
+sudo ufw allow 8080/tcp
+
+# Allow outbound HTTPS
+sudo ufw allow out 443/tcp
+```
+
+## Storage Requirements
+
+### Disk Space
+
+- **Minimum:** 100 MB (application binary and dependencies)
+- **Recommended:** 1 GB for logs and temporary git operations
+- **Note:** gitGost does **not** persist repository data. All git operations are handled in memory or temporary directories.
+
+### Temporary Storage
+
+- gitGost creates temporary git repositories during push operations
+- Maximum repository size: **500 MB** (enforced by application)
+- Maximum commit size: **10 MB** (enforced by application)
+- Maximum push size: **100 MB** (enforced by middleware)
+
+Ensure `/tmp` or your system's temporary directory has sufficient space.
+
+## Resource Requirements
+
+### Minimum Specifications
+
+- **CPU:** 1 core
+- **RAM:** 512 MB
+- **Network:** 10 Mbps
+
+### Recommended Specifications (Production)
+
+- **CPU:** 2+ cores
+- **RAM:** 2 GB
+- **Network:** 100 Mbps
+- **Load balancer:** For high availability
+
+### Rate Limits
+
+By design, gitGost enforces rate limits to prevent abuse:
+
+- **Push operations:** 5 PRs per IP per hour
+- **Admin endpoints:** 10 requests per IP per minute (sliding window)
+- **GitHub API:** Subject to GitHub's rate limits (5000 requests/hour for authenticated tokens)
+
+## GitHub Account Requirements
+
+<Warning>
+  The GitHub token used must belong to an account with these characteristics:
+</Warning>
+
+1. **Bot account recommended:** Use a dedicated GitHub account (e.g., `gitgost-anonymous`)
+2. **Repository access:** The account will create forks and open PRs on behalf of users
+3. **Public repositories only:** gitGost is designed for public repo contributions
+4. **40,000 repository limit:** GitHub enforces a per-user repository cap. Fork repositories created by gitGost should be manually deleted periodically to stay under this limit.
+
+## Security Considerations
+
+- **TLS/SSL:** Always deploy behind a reverse proxy (nginx, Caddy) with HTTPS enabled
+- **VPN/Tor:** Recommended for users seeking stronger anonymity
+- **IP logging:** gitGost does not log IP addresses by default (Gin logging is disabled)
+- **Trusted proxies:** Configure `SetTrustedProxies` in `internal/http/router.go:134` if behind a known reverse proxy
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/deployment/configuration">
+    Learn how to configure gitGost with environment variables and config files
+  </Card>
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Deploy gitGost using Docker with compose examples
+  </Card>
+  <Card title="Environment Variables" icon="list" href="/deployment/environment-variables">
+    Complete reference of all environment variables
+  </Card>
+</CardGroup>

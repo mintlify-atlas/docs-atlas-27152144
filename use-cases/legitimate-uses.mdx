@@ -1,0 +1,184 @@
+---
+title: Legitimate Use Cases
+description: When and why to use gitGost for anonymous contributions
+icon: 'shield-check'
+---
+
+gitGost is designed for **responsible, good-faith contributions** where identity exposure is unnecessary or undesirable. All pull requests remain public and subject to maintainer approval, preserving accountability while protecting contributor privacy.
+
+## Privacy-Driven Scenarios
+
+<CardGroup cols={2}>
+  <Card title="Typo & Documentation Fixes" icon="pencil">
+    Fix obvious errors without creating a permanent contribution record tied to your identity. Perfect for quick corrections that don't warrant long-term association.
+  </Card>
+  
+  <Card title="Employer Policy Conflicts" icon="building">
+    Contribute to projects that may conflict with your employer's policies or non-compete agreements while maintaining professional boundaries.
+  </Card>
+  
+  <Card title="Politically Sensitive Projects" icon="scale-balanced">
+    Participate in controversial or politically sensitive repositories without exposing yourself to potential consequences.
+  </Card>
+  
+  <Card title="Email Harvesting Protection" icon="shield">
+    Reduce exposure to email harvesting, scraping, and potential doxxing from publicly visible commit metadata.
+  </Card>
+</CardGroup>
+
+## Detailed Use Cases
+
+### 1. Avoiding Permanent Public Records
+
+<Tip>
+**Real-world quote:** "Your commit history shouldn't be an HR liability forever."
+</Tip>
+
+Every GitHub commit contains your name and email in permanent, searchable history. gitGost allows you to contribute without:
+
+- Creating a permanent activity trail that future employers can scrutinize
+- Exposing personal email addresses to scrapers and spammers
+- Linking your professional identity to every minor fix or experiment
+
+**Example scenarios:**
+- Fixing a typo in a project you don't want associated with your resume
+- Contributing to open-source projects outside your professional domain
+- Testing experimental changes without public attribution
+
+### 2. Professional Boundary Management
+
+Many developers face situations where contributing to certain projects could:
+
+- Violate non-compete or intellectual property agreements
+- Create conflicts of interest with current employment
+- Expose side projects before they're ready for public association
+
+gitGost provides a layer of separation, allowing you to contribute expertise while maintaining professional boundaries.
+
+<Warning>
+Always review your employment contracts. gitGost provides anonymity, not legal immunity from contractual obligations.
+</Warning>
+
+### 3. Jurisdiction and Safety Concerns
+
+Developers in certain jurisdictions face real risks from public contribution records:
+
+- **Geographic risks:** Contributing to projects that local governments consider controversial
+- **Political exposure:** Participating in repositories related to privacy tools, encryption, or activism
+- **Professional risks:** Maintaining reputation in conservative industries while contributing to progressive projects
+
+gitGost is designed for developers who need to balance open-source participation with personal safety.
+
+### 4. Experimental Contributions
+
+<Accordion title="Why use gitGost for experiments?">
+  When testing ideas or proposing changes you're not confident about, anonymity reduces:
+  
+  - Social pressure and judgment from your professional network
+  - Anxiety about proposing "obvious" solutions to complex problems
+  - Fear of being wrong in public spaces
+  
+  This encourages more participation from developers who might otherwise stay silent.
+</Accordion>
+
+Experimentation is crucial for open source, but many developers self-censor due to fear of permanent association with failed attempts or "stupid questions."
+
+### 5. Reducing Harassment Vectors
+
+Public GitHub profiles can become vectors for:
+
+- Targeted harassment based on contribution history
+- Email spam and phishing attempts
+- Doxxing through correlation of commit metadata
+- Unwanted recruiter contact
+
+gitGost strips all identifying metadata, making it significantly harder for bad actors to target contributors.
+
+## Core Design Principle
+
+<Card title="Privacy Without Removing Accountability" icon="balance-scale">
+  gitGost **enables privacy**, not anonymity from consequences:
+  
+  - All PRs are **public** and visible on GitHub
+  - Maintainers **review and approve** every contribution
+  - Code quality and project standards remain **fully enforced**
+  - Abuse attempts are **rate-limited and validated**
+</Card>
+
+You're anonymous to the public, but your contributions still face the same scrutiny and approval process as any other pull request.
+
+## Who Benefits Most?
+
+<CardGroup cols={3}>
+  <Card title="Privacy Advocates" icon="user-secret">
+    Developers who prioritize minimal digital footprint and metadata exposure
+  </Card>
+  
+  <Card title="At-Risk Contributors" icon="shield-halved">
+    Those in jurisdictions or situations where visibility creates personal risk
+  </Card>
+  
+  <Card title="Career-Conscious Developers" icon="briefcase">
+    Professionals managing public perception and employer relationships
+  </Card>
+</CardGroup>
+
+## What gitGost Is NOT For
+
+<Warning>
+gitGost is **not** designed for:
+
+- Evading accountability for malicious contributions
+- Circumventing repository bans or moderation
+- Avoiding legal responsibility
+- Harassment, spam, or abuse
+
+See [When NOT to Use gitGost](/use-cases/when-not-to-use) for detailed prohibited uses.
+</Warning>
+
+## Technical Guarantees
+
+gitGost provides **strong anonymity features**, not perfect anonymity. It protects against:
+
+✅ Public exposure of name and email in commits  
+✅ Direct association between personal GitHub account and PR  
+✅ Passive metadata collection in public repos  
+✅ Permanent history of minor contributions  
+
+❌ Does **NOT** protect against advanced threats like nation-state surveillance, code style analysis, or targeted deanonymization
+
+For full details, see the [Threat Model](https://github.com/livrasand/gitGost#threat-model) documentation.
+
+<Tip>
+**Pro tip:** For maximum privacy, combine gitGost with Tor or a VPN to mask your IP address. See the contributing guide for instructions on using `torsocks` with gitGost.
+</Tip>
+
+## Example Workflow
+
+```bash
+# Scenario: Fix a documentation typo without exposing your identity
+
+# 1. Add gitGost remote
+git remote add gost https://gitgost.leapcell.app/v1/gh/username/repo
+
+# 2. Create branch and fix the typo
+git checkout -b fix-typo
+git commit -am "fix: correct spelling of 'receive' in README
+
+Fixed grammatical error where 'recieve' was misspelled."
+
+# 3. Push anonymously
+git push gost fix-typo:main
+
+# → PR opens as @gitgost-anonymous
+# → Maintainer reviews and merges
+# → No trace back to your identity
+```
+
+Your contribution improves the project, the maintainer sees a well-described fix, and your identity remains private.
+
+---
+
+<Card title="Next Steps" icon="arrow-right" href="/use-cases/examples">
+  See real-world examples of anonymous contributions in action
+</Card>

@@ -1,0 +1,743 @@
+---
+title: Troubleshooting
+description: Diagnose and fix common gitGost operational issues
+icon: wrench
+---
+
+# Troubleshooting gitGost
+
+Quick solutions to common operational problems.
+
+## Push Errors
+
+<Accordion title="Error: rate limit exceeded">
+
+**Symptom:**
+
+```
+remote: Rate limit exceeded: max 5 PRs per hour per IP.
+remote: Please try again later.
+! [remote rejected] main -> main (push rejected: rate limit exceeded)
+error: failed to push some refs
+```
+
+**Cause:**
+
+IP address has exceeded 5 PRs in the last hour (from `internal/http/handlers.go:160-173`).
+
+**Solutions:**
+
+1. **Wait for rate limit to reset** (up to 1 hour)
+
+2. **Use different IP address:**
+   ```bash
+   # Via VPN
+   vpn connect
+   git push gost my-feature:main
+   
+   # Via Tor (see README for setup)
+   torsocks git push gost my-feature:main
+   ```
+
+3. **Verify you're not in a loop:**
+   ```bash
+   # Check recent pushes
+   git log --oneline origin/main..HEAD
+   
+   # Remove hook if causing repeated pushes
+   rm .git/hooks/pre-push
+   ```
+
+**For operators:**
+
+Rate limit is intentional abuse protection. Legitimate users rarely hit this limit. If seeing widespread complaints, consider increasing `rateLimitMaxPRs` in `internal/http/handlers.go:562`.
+
+</Accordion>
+
+<Accordion title="Error: service temporarily suspended">
+
+**Symptom:**
+
+```
+remote: SERVICE TEMPORARILY SUSPENDED
+remote: The panic button has been activated. The service has been
+remote: temporarily suspended due to detected bot activity
+remote: sending mass PRs. Please try again in 15 minutes.
+```
+
+**Cause:**
+
+Service administrator activated panic mode due to abuse detection.
+
+**Solutions:**
+
+**For users:**
+
+1. **Wait 15-30 minutes** and retry
+2. **Check service status:**
+   ```bash
+   curl https://gitgost.leapcell.app/api/status
+   # {"panic_mode": true} = suspended
+   # {"panic_mode": false} = active
+   ```
+
+**For operators:**
+
+Deactivate panic mode if threat has passed:
+
+```bash
+curl -X POST https://gitgost.leapcell.app/admin/panic \
+  -H "Content-Type: application/json" \
+  -d '{"password":"YOUR_PASSWORD","active":false}'
+```
+
+</Accordion>
+
+<Accordion title="Error: failed to create fork">
+
+**Symptom:**
+
+```
+remote: gitGost: Creating fork...
+remote: unpack ok
+remote: error creating fork: API rate limit exceeded
+```
+
+**Cause:**
+
+GitHub API rate limit reached or `@gitgost-anonymous` account hit 40,000 repository cap.
+
+**Solutions:**
+
+**For operators:**
+
+1. **Check GitHub token rate limit:**
+   ```bash
+   curl -H "Authorization: token YOUR_GITHUB_TOKEN" \
+        https://api.github.com/rate_limit
+   ```
+
+2. **Wait for reset** (shown in `X-RateLimit-Reset` header)
+
+3. **Verify bot account status:**
+   ```bash
+   curl https://api.github.com/users/gitgost-anonymous/repos?per_page=1
+   # Check repository count
+   ```
+
+4. **Clean up old forks:**
+   ```bash
+   # Manual cleanup script needed
+   # GitHub limits accounts to 40,000 repos (README.md:218)
+   ```
+
+</Accordion>
+
+<Accordion title="Error: repository too large">
+
+**Symptom:**
+
+```bash
+error: RPC failed; HTTP 413 curl 22 The requested URL returned error: 413
+```
+
+**Cause:**
+
+Repository exceeds size limits:
+- **Repo size**: 500 MB max
+- **Commit size**: 10 MB max
+- **Push size**: 100 MB max
+
+From `README.md:213-215` and `internal/http/router.go:49`
+
+**Solutions:**
+
+1. **Reduce commit size:**
+   ```bash
+   # Find large files
+   git ls-files | xargs du -h | sort -h | tail -n 20
+   
+   # Remove large files
+   git rm large-file.bin
+   git commit --amend
+   ```
+
+2. **Use Git LFS for large files:**
+   ```bash
+   git lfs install
+   git lfs track "*.bin"
+   git add .gitattributes
+   git commit -m "Use LFS"
+   ```
+
+3. **Split into smaller commits:**
+   ```bash
+   git reset HEAD~1
+   git add file1.txt
+   git commit -m "Part 1"
+   git add file2.txt  
+   git commit -m "Part 2"
+   ```
+
+</Accordion>
+
+<Accordion title="Error: invalid ref name">
+
+**Symptom:**
+
+```
+remote: gitGost: Processing your anonymous contribution...
+remote: unpack error: invalid ref name
+```
+
+**Cause:**
+
+Branch name contains invalid characters or Git protocol error.
+
+**Solutions:**
+
+1. **Use valid branch names:**
+   ```bash
+   # Valid
+   git checkout -b feature/fix-bug
+   git checkout -b hotfix-123
+   
+   # Invalid (contains spaces, special chars)
+   git checkout -b "my feature"  # ❌
+   git checkout -b fix@bug       # ❌
+   ```
+
+2. **Ensure clean push:**
+   ```bash
+   git push gost my-branch:main
+   # Format: local-branch:target-branch
+   ```
+
+3. **Check for corruption:**
+   ```bash
+   git fsck
+   git gc
+   ```
+
+</Accordion>
+
+## Authentication Issues
+
+<Accordion title="HTTP 401: Unauthorized">
+
+**Symptom:**
+
+```bash
+fatal: Authentication failed for 'https://gitgost.leapcell.app/'
+```
+
+**Cause:**
+
+Git credential helper trying to prompt for credentials (gitGost requires none).
+
+**Solutions:**
+
+1. **Disable credential helper temporarily:**
+   ```bash
+   git -c credential.helper= push gost my-branch:main
+   ```
+
+2. **Remove stored credentials:**
+   ```bash
+   # Remove gitgost.leapcell.app from credential store
+   git credential reject <<EOF
+   protocol=https
+   host=gitgost.leapcell.app
+   EOF
+   ```
+
+3. **Configure per-remote:**
+   ```bash
+   git config credential.https://gitgost.leapcell.app.helper ""
+   ```
+
+**Note:** GitGost is designed for anonymous access. No credentials are ever required.
+
+</Accordion>
+
+<Accordion title="Error: API key required">
+
+**Symptom:**
+
+```json
+{"error": "API key required"}
+```
+
+**Cause:**
+
+Instance has `GITGOST_API_KEY` configured and your request lacks the key (rare for public instances).
+
+**Solution:**
+
+Git operations never require API keys. This error only appears on non-git endpoints. If pushing:
+
+```bash
+# Ensure using correct URL format
+git remote set-url gost https://gitgost.leapcell.app/v1/gh/owner/repo
+```
+
+From `internal/http/router.go:95-126`: Git endpoints bypass API key checks.
+
+</Accordion>
+
+## Network & Connectivity
+
+<Accordion title="Connection timeout">
+
+**Symptom:**
+
+```bash
+fatal: unable to access 'https://gitgost.leapcell.app/': 
+Failed to connect to gitgost.leapcell.app port 443: Connection timed out
+```
+
+**Cause:**
+
+- Service is down
+- Network/firewall blocking
+- DNS resolution failure
+
+**Solutions:**
+
+1. **Check service status:**
+   ```bash
+   curl -I https://gitgost.leapcell.app/health
+   # Should return HTTP/2 200
+   ```
+
+2. **Test DNS resolution:**
+   ```bash
+   nslookup gitgost.leapcell.app
+   dig gitgost.leapcell.app
+   ```
+
+3. **Check firewall/proxy:**
+   ```bash
+   # Test with verbose
+   curl -v https://gitgost.leapcell.app/health
+   
+   # Test from different network
+   # (mobile hotspot, VPN, etc.)
+   ```
+
+4. **Verify SSL/TLS:**
+   ```bash
+   openssl s_client -connect gitgost.leapcell.app:443
+   ```
+
+</Accordion>
+
+<Accordion title="Slow push performance">
+
+**Symptom:**
+
+Push takes 5+ minutes or times out.
+
+**Cause:**
+
+- Large repository size
+- Slow network connection
+- Using Tor (expected slowness)
+
+**Solutions:**
+
+1. **Check repository size:**
+   ```bash
+   du -sh .git
+   # Should be < 500 MB
+   ```
+
+2. **Increase Git timeout:**
+   ```bash
+   git config --global http.postBuffer 524288000  # 500 MB
+   git config --global http.timeout 300           # 5 minutes
+   ```
+
+3. **If using Tor:**
+   ```bash
+   # Tor is slow by design (3-hop routing)
+   # Expected: 2-5 minutes for large pushes
+   # README.md:296 mentions this is normal
+   ```
+
+4. **Use shallow clone to reduce size:**
+   ```bash
+   git clone --depth 1 source-repo
+   cd source-repo
+   # Make changes
+   git push gost my-branch:main
+   ```
+
+</Accordion>
+
+<Accordion title="SSL certificate errors">
+
+**Symptom:**
+
+```bash
+fatal: unable to access 'https://gitgost.leapcell.app/':
+SSL certificate problem: unable to get local issuer certificate
+```
+
+**Cause:**
+
+Outdated CA certificates or corporate SSL interception.
+
+**Solutions:**
+
+1. **Update CA certificates:**
+   ```bash
+   # Ubuntu/Debian
+   sudo apt update && sudo apt install ca-certificates
+   
+   # macOS
+   brew install ca-certificates
+   
+   # Windows
+   # Download from https://curl.se/docs/caextract.html
+   ```
+
+2. **Verify certificate:**
+   ```bash
+   curl -v https://gitgost.leapcell.app/health 2>&1 | grep -i "certificate"
+   ```
+
+3. **Temporary workaround (NOT recommended for production):**
+   ```bash
+   GIT_SSL_NO_VERIFY=true git push gost my-branch:main
+   ```
+
+</Accordion>
+
+## Service Health Issues
+
+<Accordion title="High memory usage">
+
+**Symptom:**
+
+```json
+{
+  "memory": {
+    "alloc": 524288000,
+    "sys": 1073741824
+  }
+}
+```
+
+**Cause:**
+
+Memory leak or sustained high traffic.
+
+**Diagnosis:**
+
+1. **Check goroutine count:**
+   ```bash
+   curl https://gitgost.leapcell.app/metrics | jq '.goroutines'
+   # Should be < 100 idle, < 500 busy
+   ```
+
+2. **Monitor over time:**
+   ```bash
+   while true; do
+     echo "$(date): $(curl -s https://gitgost.leapcell.app/metrics | 
+       jq '.memory.alloc')" | tee -a memory.log
+     sleep 60
+   done
+   ```
+
+**Solutions:**
+
+1. **Restart service** (clears memory)
+
+2. **Increase memory limits:**
+   ```bash
+   # Leapcell: Adjust instance size
+   # Docker: Update container limits
+   docker run --memory=1g gitgost
+   ```
+
+3. **Check for leaks in custom code**
+
+From `internal/http/handlers.go:508-522`: Metrics endpoint exposes `runtime.MemStats`.
+
+</Accordion>
+
+<Accordion title="Service won't start">
+
+**Symptom:**
+
+Service crashes immediately or fails health check.
+
+**Diagnosis:**
+
+1. **Check logs:**
+   ```bash
+   # Text format
+   tail -f app.log
+   
+   # JSON format  
+   tail -f app.log | jq
+   ```
+
+2. **Verify environment variables:**
+   ```bash
+   # Required:
+   echo $GITHUB_TOKEN       # Must be valid
+   
+   # Optional but recommended:
+   echo $PANIC_PASSWORD
+   echo $NTFY_ADMIN_TOPIC
+   echo $SUPABASE_URL
+   echo $SUPABASE_KEY
+   ```
+
+**Common Issues:**
+
+1. **Missing GitHub token:**
+   ```bash
+   export GITHUB_TOKEN="ghp_..."
+   ```
+
+2. **Invalid port binding:**
+   ```bash
+   # Use high port if permission denied
+   export PORT=8080
+   ```
+
+3. **Database connection failure:**
+   ```bash
+   # Test Supabase connection
+   curl -H "apikey: $SUPABASE_KEY" "$SUPABASE_URL/rest/v1/"
+   ```
+
+</Accordion>
+
+<Accordion title="Metrics endpoint returns errors">
+
+**Symptom:**
+
+```bash
+curl https://gitgost.leapcell.app/metrics
+{"error": "internal server error"}
+```
+
+**Cause:**
+
+Rare runtime panic in metrics collection.
+
+**Solutions:**
+
+1. **Check health endpoint instead:**
+   ```bash
+   curl https://gitgost.leapcell.app/health
+   ```
+
+2. **Review logs for panics:**
+   ```bash
+   grep -i "panic" app.log
+   grep -i "error" app.log | grep metrics
+   ```
+
+3. **Restart service** if persistent
+
+</Accordion>
+
+## PR Creation Issues
+
+<Accordion title="PR not appearing on GitHub">
+
+**Symptom:**
+
+Push succeeds but no PR is visible on GitHub.
+
+**Cause:**
+
+- PR was created but closed by maintainer
+- Network error after push but before PR creation
+- GitHub API rate limit
+
+**Solutions:**
+
+1. **Search for PR:**
+   ```bash
+   # Check if PR exists (even if closed)
+   gh pr list --repo owner/repo --state all --author gitgost-anonymous
+   ```
+
+2. **Check push response:**
+   ```bash
+   git push gost my-branch:main
+   # Look for:
+   # remote: PR URL: https://github.com/owner/repo/pull/123
+   ```
+
+3. **Verify fork exists:**
+   ```bash
+   curl https://api.github.com/repos/gitgost-anonymous/repo
+   # Should return 200 if fork succeeded
+   ```
+
+4. **Retry push:**
+   ```bash
+   git push gost my-branch:main --force
+   ```
+
+</Accordion>
+
+<Accordion title="PR created with wrong branch name">
+
+**Symptom:**
+
+PR has branch name like `gitgost-a3f7b9c2` instead of your branch name.
+
+**Cause:**
+
+This is expected behavior. GitGost generates deterministic branch names for tracking.
+
+**Explanation:**
+
+From `internal/http/handlers.go:245-252`:
+
+```go
+branchFromHash := fmt.Sprintf("gitgost-%s", receivedPRHash)
+```
+
+Branch names are based on PR hash to enable updates via push options.
+
+**Not a bug:** This enables the update workflow:
+```bash
+git push gost my-branch:main -o pr-hash=a3f7b9c2
+```
+
+</Accordion>
+
+## Logging & Debugging
+
+<Accordion title="No logs appearing">
+
+**Symptom:**
+
+Log file empty or no output.
+
+**Solutions:**
+
+1. **Check log configuration:**
+   ```bash
+   echo $LOG_FORMAT  # Should be "text" or "json"
+   ```
+
+2. **Verify logger initialization:**
+   ```bash
+   # Logs should start with:
+   # [gitGost] Privacy mode: Minimal logging enabled
+   # [gitGost] Server started - Ready for anonymous contributions
+   ```
+
+3. **Check stdout/stderr:**
+   ```bash
+   # Logs go to stdout by default (logging.go:22-24)
+   # Redirect if needed:
+   ./gitgost 2>&1 | tee app.log
+   ```
+
+</Accordion>
+
+<Accordion title="Want more detailed logs">
+
+**Issue:**
+
+Logs are too minimal for debugging.
+
+**Explanation:**
+
+GitGost intentionally logs minimally to protect user privacy (from `internal/utils/logging.go:27-29`):
+
+```go
+Log("Privacy mode: Minimal logging enabled")
+Log("Server started - Ready for anonymous contributions")
+```
+
+**For debugging:**
+
+1. **Use JSON format for structure:**
+   ```bash
+   export LOG_FORMAT=json
+   ```
+
+2. **Monitor metrics endpoint:**
+   ```bash
+   watch -n 5 'curl -s https://gitgost.leapcell.app/metrics | jq'
+   ```
+
+3. **Add temporary debug logs** (development only):
+   ```go
+   utils.Log("DEBUG: Step completed")
+   ```
+
+**Privacy reminder:** Never log IPs, user agents, or timing patterns that could deanonymize users.
+
+</Accordion>
+
+## Getting Help
+
+<Card title="Still stuck?" icon="question">
+  
+  **Check these resources:**
+  
+  - **Source code**: Inspect handlers in `internal/http/handlers.go`
+  - **GitHub issues**: Search existing issues at github.com/livrasand/gitGost
+  - **Security issues**: Email `gitGos@proton.me` (see `SECURITY.md:11`)
+  - **Anonymous reporting**: Use gitGost itself to submit a PR
+  
+  **When reporting issues:**
+  
+  ✅ Include: Error messages, steps to reproduce, expected behavior
+  
+  ❌ Avoid: Logs with IPs, personal info, credentials
+  
+</Card>
+
+## Diagnostic Commands Reference
+
+```bash
+# Service health
+curl https://gitgost.leapcell.app/health
+curl https://gitgost.leapcell.app/metrics
+curl https://gitgost.leapcell.app/api/status
+
+# Test push (dry-run)
+git push --dry-run gost my-branch:main
+
+# Verbose Git output
+GIT_CURL_VERBOSE=1 GIT_TRACE=1 git push gost my-branch:main
+
+# Check remote configuration
+git remote -v
+git config --get-regexp 'remote.gost.*'
+
+# Network diagnostics
+curl -v https://gitgost.leapcell.app/health
+ping gitgost.leapcell.app
+traceroute gitgost.leapcell.app
+
+# GitHub API rate limits
+curl -H "Authorization: token $GITHUB_TOKEN" \
+     https://api.github.com/rate_limit
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Monitoring" icon="chart-line" href="/operations/monitoring">
+    Set up proactive monitoring to catch issues early
+  </Card>
+  
+  <Card title="Moderation" icon="gavel" href="/operations/moderation">
+    Learn moderation tools to handle abuse
+  </Card>
+</CardGroup>

@@ -1,97 +1,105 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "gitGost Documentation"
+description: "Contribute anonymously to any GitHub repository without an account, token, or any trace"
 ---
 
-## Setting up
+# Welcome to gitGost
 
-Get your documentation site up and running in minutes.
+**Contribute to any GitHub repo without leaving a trace.**
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+Zero accounts • Zero tokens • Zero metadata • Designed for strong anonymity
 
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
+<CardGroup cols={2}>
   <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
+    title="Quick Start"
+    icon="rocket"
+    href="/quickstart"
   >
-    Edit your docs locally and preview them in real time.
+    Get started with anonymous contributions in 60 seconds
   </Card>
   <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
+    title="How It Works"
+    icon="gears"
+    href="/how-it-works"
   >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+    Understand the Git Smart HTTP protocol and anonymization process
   </Card>
   <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
+    title="Tor Integration"
+    icon="shield-halved"
+    href="/guides/tor-integration"
   >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
-
-## Create beautiful pages
-
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+    Hide your IP address with Tor for maximum privacy
   </Card>
   <Card
-    title="Code samples"
+    title="API Reference"
     icon="code"
-    href="/essentials/code"
+    href="/api/git-smart-http"
   >
-    Add sample code to demonstrate how to use your product.
+    Complete API documentation for Git protocol and REST endpoints
   </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+</CardGroup>
 
-## Need inspiration?
+## One-liner demo
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+```bash
+# Add as remote → fix → push → done
+git remote add gost https://gitgost.leapcell.app/v1/gh/torvalds/linux
+git checkout -b fix-typo
+git commit -am "fix: obvious typo in README"
+git push gost fix-typo:main
+# → PR opened as @gitgost-anonymous with no direct trace to you
+```
+
+<Note>
+gitGost provides strong anonymity features, but not perfect anonymity. See the [Threat Model](/security/threat-model) for details.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Total Anonymity" icon="user-secret">
+    Strips author name, email, timestamps, and all identifying metadata. PRs created by neutral @gitgost-anonymous bot.
+  </Card>
+  <Card title="One-Command Setup" icon="terminal">
+    Just `git remote add gost <url>` – no accounts, tokens, or browser extensions required.
+  </Card>
+  <Card title="Battle-tested Security" icon="lock">
+    Rate limiting, repository size caps, commit validation. Written in pure Go with minimal dependencies.
+  </Card>
+  <Card title="Works Everywhere" icon="globe">
+    Terminal, CI/CD, Docker, scripts – any public GitHub repo, anywhere Git runs.
+  </Card>
+</CardGroup>
+
+## Why developers love gitGost
+
+<Accordion title="No permanent public record of your activity">
+Your commit history shouldn't be an HR liability forever. gitGost lets you contribute without creating a permanent association with your identity.
+</Accordion>
+
+<Accordion title="Safely contribute to controversial projects">
+Employer or country doesn't like it? No problem. gitGost removes the risk of contributing to projects that may conflict with policies or create personal risk.
+</Accordion>
+
+<Accordion title="Stop email harvesting & doxxing">
+Public commits expose your email to scrapers and bad actors. gitGost prevents email harvesting from commit metadata.
+</Accordion>
+
+<Accordion title="Fix typos without eternal attribution">
+Fix that one annoying typo without attaching your name for eternity. Small contributions shouldn't require long-term identity exposure.
+</Accordion>
+
+## Get Started
+
+<Steps>
+  <Step title="Read the Introduction">
+    Learn about gitGost's privacy guarantees and threat model in the [Introduction](/introduction).
+  </Step>
+  <Step title="Follow the Quickstart">
+    Make your first anonymous contribution in under a minute with the [Quickstart Guide](/quickstart).
+  </Step>
+  <Step title="Enhance Your Privacy">
+    Combine gitGost with Tor for IP-level anonymity in our [Tor Integration Guide](/guides/tor-integration).
+  </Step>
+</Steps>

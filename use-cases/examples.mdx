@@ -1,0 +1,419 @@
+---
+title: Real-World Examples
+description: See gitGost in action with real contributions and use cases
+icon: 'code-pull-request'
+---
+
+Explore real-world examples of anonymous contributions made through gitGost, demonstrating how the tool enables privacy-respecting participation in open source.
+
+## Featured Example: GPIO Bug Fix
+
+<Card title="Quick 10-Second Fix Without Identity Exposure" icon="bolt">
+  > "Fixed GPIO mapping bug in 10s without doxxing risk – @gitgost-anonymous"
+  
+  **Repository:** [mehdi7129/inky-photo-frame](https://github.com/mehdi7129/inky-photo-frame)  
+  **Pull Request:** [#3](https://github.com/mehdi7129/inky-photo-frame/pull/3)  
+  **Contribution Type:** Bug fix
+</Card>
+
+### What Happened
+
+A developer noticed a GPIO pin mapping error in the `inky-photo-frame` project — a Python-based e-ink photo frame controller. The fix was trivial (likely a one-line change), but the developer:
+
+- Didn't want a permanent GitHub contribution record for a 10-second fix
+- Had privacy concerns about exposing their identity in a hardware project
+- Wanted to help without creating a long-term association
+
+Using gitGost, they:
+
+```bash
+# Added the gitGost remote
+git remote add gost https://gitgost.leapcell.app/v1/gh/mehdi7129/inky-photo-frame
+
+# Created a branch and fixed the bug
+git checkout -b fix-gpio-mapping
+git commit -am "fix: correct GPIO pin mapping for display controller"
+
+# Pushed anonymously
+git push gost fix-gpio-mapping:main
+```
+
+The PR was created by `@gitgost-anonymous`, reviewed by the maintainer, and merged — all without exposing the contributor's identity.
+
+<Tip>
+**Why this matters:** Not every contribution needs to be a career highlight. Sometimes you just want to fix something broken without the overhead of permanent attribution.
+</Tip>
+
+## Common Contribution Types
+
+<CardGroup cols={2}>
+  <Card title="Documentation Fixes" icon="book">
+    Typos, broken links, outdated instructions, or clarity improvements that don't warrant identity exposure.
+  </Card>
+  
+  <Card title="Bug Fixes" icon="wrench">
+    Quick fixes for obvious errors where the contributor wants to help without permanent association.
+  </Card>
+  
+  <Card title="Minor Refactoring" icon="code">
+    Code style improvements, variable renames, or small structural changes that improve maintainability.
+  </Card>
+  
+  <Card title="Dependency Updates" icon="arrow-up">
+    Version bumps, security patches, or compatibility fixes that don't require lengthy attribution.
+  </Card>
+</CardGroup>
+
+## Example Scenarios
+
+### Scenario 1: Typo Fix in High-Profile Project
+
+<Accordion title="Context">
+  You notice a spelling error in the README of the `torvalds/linux` kernel repository. It's embarrassingly obvious, but you don't want your first contribution to Linux to be a typo fix permanently attached to your GitHub profile.
+</Accordion>
+
+**Solution with gitGost:**
+
+```bash
+# Example from the README demonstration
+git remote add gost https://gitgost.leapcell.app/v1/gh/torvalds/linux
+git checkout -b fix-typo
+git commit -am "fix: obvious typo in README"
+git push gost fix-typo:main
+
+# → PR opened as @gitgost-anonymous
+```
+
+**Result:** The typo gets fixed, the maintainer sees a clear PR description, and your profile isn't cluttered with a trivial contribution.
+
+### Scenario 2: Contributing to a Controversial Project
+
+<Accordion title="Context">
+  You work at a company with strict policies about open-source contributions. You discover a critical security vulnerability in a privacy tool (e.g., Tor, Signal, or a VPN client) that you use personally. Contributing under your real identity could:
+  
+  - Violate your employer's contribution policy
+  - Create conflicts of interest
+  - Expose your political/privacy views to future employers
+</Accordion>
+
+**Solution with gitGost:**
+
+```bash
+# Add gitGost remote for privacy-focused project
+git remote add gost https://gitgost.leapcell.app/v1/gh/privacy-org/secure-client
+
+# Create detailed security patch
+git checkout -b sec-fix-auth-bypass
+git commit -am "security: fix authentication bypass in session validation
+
+DISCLOSURE: Potential bypass of session token validation in auth middleware.
+
+Impact: Attackers with expired tokens could maintain session access.
+Fix: Add strict timestamp validation before token refresh.
+
+Tested with unit tests in auth_test.go."
+
+# Push anonymously (ideally through Tor)
+torsocks git push gost sec-fix-auth-bypass:main
+```
+
+**Result:** The vulnerability is responsibly disclosed and fixed, the project improves, and your professional identity remains protected.
+
+<Warning>
+**Security researchers:** For sensitive disclosures, combine gitGost with Tor to mask your IP. See the [Contributing guide](https://github.com/livrasand/gitGost#going-further-hide-your-ip-with-torsocks) for Tor setup instructions.
+</Warning>
+
+### Scenario 3: Experimenting with New Features
+
+<Accordion title="Context">
+  You have an idea for a new feature in a popular framework, but you're not sure if it's good or if the maintainers will like it. You don't want your first contribution to the project to be a rejected proposal permanently visible on your GitHub profile.
+</Accordion>
+
+**Solution with gitGost:**
+
+```bash
+git remote add gost https://gitgost.leapcell.app/v1/gh/popular-org/framework
+git checkout -b experimental-feature
+
+# Implement the feature with detailed explanation
+git commit -am "feat: add configurable timeout for async handlers
+
+PROPOSAL: Allow users to configure per-handler timeout overrides.
+
+Rationale:
+- Current global timeout doesn't fit all use cases
+- Some handlers need longer execution windows
+- Provides more granular control for developers
+
+Implementation:
+- Added HandlerOptions struct with Timeout field
+- Backward compatible with existing code
+- Includes tests and documentation
+
+Open to feedback and alternative approaches."
+
+git push gost experimental-feature:main
+```
+
+**Result:** If accepted, great! If rejected, no permanent mark on your profile. Either way, you contributed an idea without social risk.
+
+## Badge Implementation Examples
+
+Repository maintainers can signal that they welcome anonymous contributions:
+
+### Static Badge
+
+```markdown
+![Anonymous Contributor Friendly](https://gitgost.leapcell.app/badges/anonymous-friendly.svg)
+```
+
+**Result:**
+
+![Anonymous Contributor Friendly](https://gitgost.leapcell.app/badges/anonymous-friendly.svg)
+
+### Dynamic Verified Badge
+
+For repositories with a `.gitgost.yml` configuration file:
+
+```markdown
+![Anonymous Contributor Friendly](https://gitgost.leapcell.app/badges/anonymous-friendly.svg?repo=livrasand%2FgitGost)
+```
+
+**Result:**
+
+![Anonymous Contributor Friendly](https://gitgost.leapcell.app/badges/anonymous-friendly.svg?repo=livrasand%2FgitGost)
+
+<Tip>
+The verified badge dynamically checks for the presence of `.gitgost.yml` in your repository root, providing visual confirmation that your project officially supports anonymous contributions.
+</Tip>
+
+### Example `.gitgost.yml` Configuration
+
+```yaml
+# .gitgost.yml - Signal support for anonymous contributions
+welcome_message: |
+  This project welcomes anonymous contributions via gitGost.
+  
+  We value contributions regardless of contributor identity.
+  All PRs are reviewed based on code quality and merit alone.
+
+contact:
+  anonymous_issues: true
+  anonymous_comments: true
+  
+policies:
+  review_anonymous_prs: true
+  require_detailed_commits: true
+```
+
+## Detailed Workflow Example
+
+Here's a complete end-to-end example with best practices:
+
+<Steps>
+  <Step title="Identify Contribution">
+    You find a bug in a project you use. It's a simple off-by-one error in an array index.
+  </Step>
+  
+  <Step title="Fork Locally (Optional)">
+    ```bash
+    # Clone the original repository
+    git clone https://github.com/owner/project.git
+    cd project
+    ```
+  </Step>
+  
+  <Step title="Add gitGost Remote">
+    ```bash
+    git remote add gost https://gitgost.leapcell.app/v1/gh/owner/project
+    ```
+  </Step>
+  
+  <Step title="Create Branch and Fix">
+    ```bash
+    git checkout -b fix-array-bounds
+    
+    # Make your changes
+    vim src/parser.py
+    
+    # Test thoroughly
+    pytest tests/test_parser.py
+    ```
+  </Step>
+  
+  <Step title="Write Detailed Commit">
+    ```bash
+    git commit -am "fix: correct array bounds in parse_tokens function
+    
+    Bug: Off-by-one error caused parser to skip last token
+    
+    Root cause:
+    - Loop used `range(len(tokens) - 1)` instead of `range(len(tokens))`
+    - Final token was never processed
+    
+    Fix:
+    - Changed loop boundary to include all tokens
+    - Added test case for single-token input
+    - Verified existing tests still pass
+    
+    Impact: Fixes parsing errors for edge cases with trailing tokens."
+    ```
+  </Step>
+  
+  <Step title="Push Anonymously">
+    ```bash
+    # Standard push
+    git push gost fix-array-bounds:main
+    
+    # OR with Tor for IP masking
+    torsocks git -c http.extraHeader="X-Gost-Authorship-Confirmed: 1" \
+      push gost fix-array-bounds:main
+    ```
+  </Step>
+  
+  <Step title="PR Created Automatically">
+    gitGost automatically:
+    - Creates a fork under `@gitgost-anonymous`
+    - Pushes your branch
+    - Opens a PR with your commit message as description
+    - Strips all identifying metadata
+  </Step>
+  
+  <Step title="Maintainer Reviews">
+    The maintainer sees:
+    - Clear bug description
+    - Detailed fix explanation
+    - Test coverage
+    - No idea who submitted it
+    
+    They review based on **merit alone**.
+  </Step>
+  
+  <Step title="PR Merged or Discussed">
+    If accepted: Merged without attribution to your identity  
+    If changes needed: Maintainer comments on the PR  
+    If rejected: No permanent mark on your profile
+  </Step>
+</Steps>
+
+<Tip>
+**Pro tip:** Write commit messages as if you're explaining the change to a future maintainer who has no context. Your commit message becomes the PR description, so clarity helps get your contribution accepted.
+</Tip>
+
+## gitGost Self-Hosting
+
+<Card title="Dogfooding: gitGost Uses gitGost" icon="ghost">
+  The gitGost project itself accepts anonymous contributions:
+  
+  ```bash
+  git remote add gost https://gitgost.leapcell.app/v1/gh/livrasand/gitGost
+  git push gost my-feature:main
+  ```
+  
+  This demonstrates the project's commitment to the principles it enables.
+</Card>
+
+### Example: Contributing Documentation Improvements
+
+If you find an error in gitGost's own documentation:
+
+```bash
+# Clone gitGost repository
+git clone https://github.com/livrasand/gitGost.git
+cd gitGost
+
+# Add gitGost remote (yes, really)
+git remote add gost https://gitgost.leapcell.app/v1/gh/livrasand/gitGost
+
+# Fix documentation
+git checkout -b docs-improve-threat-model
+vim THREAT_MODEL.md
+
+git commit -am "docs: clarify VPN recommendations in threat model
+
+Added explicit recommendation to use VPN/Tor for IP masking.
+Previous version mentioned it but didn't emphasize importance."
+
+# Push anonymously
+git push gost docs-improve-threat-model:main
+```
+
+**Result:** gitGost's documentation improves through the very mechanism it provides.
+
+## Advanced Usage: Tor Integration
+
+For maximum privacy, contributors can combine gitGost with Tor:
+
+<Accordion title="Linux/macOS Setup">
+  ```bash
+  # Install Tor and torsocks
+  sudo apt install tor torsocks  # Debian/Ubuntu
+  brew install tor torsocks      # macOS
+  
+  # Start Tor
+  sudo systemctl start tor       # Linux
+  brew services start tor        # macOS
+  
+  # Verify Tor connection
+  torsocks curl https://check.torproject.org/api/ip
+  # → {"IsTor": true, "IP": "185.220.101.x"}
+  
+  # Push through Tor
+  torsocks git -c http.extraHeader="X-Gost-Authorship-Confirmed: 1" \
+    push gost my-branch:main
+  ```
+</Accordion>
+
+<Accordion title="Windows Setup">
+  ```bash
+  # 1. Download Tor Browser from https://www.torproject.org/download/
+  # 2. Run Tor Browser (exposes SOCKS5 on 127.0.0.1:9150)
+  
+  # 3. Configure Git to use Tor's SOCKS5 proxy
+  git config http.proxy socks5h://127.0.0.1:9150
+  git config http.extraHeader "X-Gost-Authorship-Confirmed: 1"
+  
+  # 4. Push normally
+  git push gost my-branch:main
+  
+  # 5. Cleanup when done
+  git config --unset http.proxy
+  git config --unset http.extraHeader
+  ```
+</Accordion>
+
+<Warning>
+**Tor is slow:** Pushes through Tor can take several minutes instead of seconds. This is expected — traffic routes through three encrypted nodes worldwide. gitGost's 10 MB commit limit accounts for this.
+</Warning>
+
+## Statistics Badge Example
+
+gitGost itself displays deployment and usage statistics:
+
+![Deployed Status](https://gitgost.leapcell.app/badges/deployed.svg)
+
+This badge dynamically shows service health and availability.
+
+## What Makes These Examples Work
+
+<CardGroup cols={3}>
+  <Card title="Clear Communication" icon="message">
+    Detailed commit messages that explain the **why**, not just the **what**
+  </Card>
+  
+  <Card title="Good Faith" icon="handshake">
+    Contributions that genuinely improve the project, not just test the system
+  </Card>
+  
+  <Card title="Respect for Maintainers" icon="heart">
+    Acknowledging that maintainers' time is valuable and providing context
+  </Card>
+</CardGroup>
+
+Anonymity doesn't mean low-quality contributions. The best anonymous PRs are indistinguishable from attributed ones — except for the missing metadata.
+
+---
+
+<Card title="Try It Yourself" icon="rocket" href="/quickstart">
+  Ready to make your first anonymous contribution? Start with the Quick Start guide.
+</Card>

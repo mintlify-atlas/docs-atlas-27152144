@@ -1,0 +1,529 @@
+---
+title: Environment Variables Reference
+description: Complete documentation of all gitGost environment variables
+---
+
+## Overview
+
+This page documents all environment variables used by gitGost, grouped by category. Variables are loaded from the environment or a `.env` file via `internal/config/config.go`.
+
+<Info>
+  All environment variables are **optional** with defaults, except `GITHUB_TOKEN` which is required for push operations.
+</Info>
+
+## GitHub Configuration
+
+Variables related to GitHub API authentication and operations.
+
+<ParamField path="GITHUB_TOKEN" type="string" required>
+  GitHub personal access token with `repo` permissions.
+  
+  **Required for:** All push operations, PR creation, fork management.
+  
+  **How to get:**
+  1. Visit https://github.com/settings/tokens
+  2. Generate a new token (classic)
+  3. Select the `repo` scope (full control of private repositories)
+  4. Copy the token
+  
+  **Security:** Never commit this to version control. Store in `.env` or environment.
+  
+  **Example:**
+  ```bash
+  GITHUB_TOKEN=ghp_1234567890abcdefghijklmnopqrstuvwxyz
+  ```
+  
+  **Validation:** The token must belong to an account with access to create forks and PRs. Recommended to use a dedicated bot account (e.g., `gitgost-anonymous`).
+</ParamField>
+
+## Server Configuration
+
+Variables controlling the HTTP server behavior.
+
+<ParamField path="PORT" type="string" default="8080">
+  Port on which the HTTP server listens.
+  
+  **Valid values:** Any valid port number (1-65535).
+  
+  **Example:**
+  ```bash
+  PORT=3000
+  ```
+  
+  **Note:** If deploying behind a reverse proxy, ensure the proxy forwards to this port.
+  
+  **Loaded in:** `internal/config/config.go:26`
+</ParamField>
+
+<ParamField path="READ_TIMEOUT" type="duration" default="30s">
+  Maximum duration for reading the entire request, including the body.
+  
+  **Valid values:** Any valid Go duration (e.g., `30s`, `1m`, `500ms`).
+  
+  **Example:**
+  ```bash
+  READ_TIMEOUT=60s
+  ```
+  
+  **Recommendation:** Increase for large repositories or slow networks.
+  
+  **Loaded in:** `internal/config/config.go:27`
+</ParamField>
+
+<ParamField path="WRITE_TIMEOUT" type="duration" default="30s">
+  Maximum duration before timing out writes of the response.
+  
+  **Valid values:** Any valid Go duration (e.g., `30s`, `1m`, `500ms`).
+  
+  **Example:**
+  ```bash
+  WRITE_TIMEOUT=60s
+  ```
+  
+  **Recommendation:** Increase for large pushes that take longer to process.
+  
+  **Loaded in:** `internal/config/config.go:28`
+</ParamField>
+
+<ParamField path="LOG_FORMAT" type="string" default="text">
+  Format for application logs.
+  
+  **Valid values:**
+  - `text` - Human-readable text format (default)
+  - `json` - Structured JSON format (recommended for production)
+  
+  **Example:**
+  ```bash
+  LOG_FORMAT=json
+  ```
+  
+  **Recommendation:** Use `json` in production for structured logging and easier parsing.
+  
+  **Loaded in:** `internal/config/config.go:31`
+</ParamField>
+
+## Authentication
+
+Variables for API authentication (non-git endpoints).
+
+<ParamField path="GITGOST_API_KEY" type="string" default="">
+  Optional API key for authenticating non-git endpoints (no auth if empty).
+  
+  **Behavior:**
+  - If **not set** (empty string): No authentication required for any endpoint.
+  - If **set**: All non-git endpoints require the `X-Gitgost-Key` header with this value.
+  
+  **Git operations are always anonymous** regardless of this setting.
+  
+  **Example:**
+  ```bash
+  GITGOST_API_KEY=gitgost-secure-key-12345
+  ```
+  
+  **Usage:**
+  ```bash
+  curl -H "X-Gitgost-Key: gitgost-secure-key-12345" \
+    http://localhost:8080/api/stats
+  ```
+  
+  **Affected endpoints:**
+  - `/api/stats`
+  - `/api/recent-prs`
+  - `/api/pr-status/:hash`
+  - `/metrics` (if auth is enabled)
+  
+  **Not affected:**
+  - `/v1/gh/:owner/:repo/git-receive-pack` (always anonymous)
+  - `/v1/gh/:owner/:repo/git-upload-pack` (always anonymous)
+  - `/v1/gh/:owner/:repo/info/refs` (always anonymous)
+  - `/health` (always public)
+  
+  **Loaded in:** `internal/config/config.go:29`
+</ParamField>
+
+## Database (Supabase)
+
+Variables for persistent statistics storage using Supabase.
+
+<ParamField path="SUPABASE_URL" type="string" default="">
+  Supabase project URL for storing PR statistics (disabled if empty).
+  
+  **Format:** `https://your-project-id.supabase.co`
+  
+  **Example:**
+  ```bash
+  SUPABASE_URL=https://abcdefghijklmnop.supabase.co
+  ```
+  
+  **How to get:**
+  1. Create a project at https://supabase.com/dashboard
+  2. Navigate to Project Settings → API
+  3. Copy the "Project URL"
+  
+  **Behavior if not set:** Server starts with a warning: "Supabase not configured, stats will not be persisted". Stats remain in memory only.
+  
+  **Loaded in:** `internal/config/config.go:32`
+  
+  **Initialized in:** `cmd/server/main.go:43-48`
+</ParamField>
+
+<ParamField path="SUPABASE_KEY" type="string" default="">
+  Supabase anonymous/public API key (disabled if empty).
+  
+  **Example:**
+  ```bash
+  SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+  ```
+  
+  **How to get:**
+  1. Create a project at https://supabase.com/dashboard
+  2. Navigate to Project Settings → API
+  3. Copy the "anon" or "public" key
+  
+  **Security:** This key is safe to expose in client-side code. It only allows operations permitted by Row Level Security (RLS) policies.
+  
+  **Note:** Both `SUPABASE_URL` and `SUPABASE_KEY` must be set for Supabase to be enabled.
+  
+  **Loaded in:** `internal/config/config.go:33`
+</ParamField>
+
+## Notifications (ntfy)
+
+Variables for admin notifications via ntfy.sh.
+
+<ParamField path="NTFY_BASE_URL" type="string" default="https://ntfy.sh">
+  Base URL for ntfy notification service.
+  
+  **Example (self-hosted):**
+  ```bash
+  NTFY_BASE_URL=https://ntfy.yourdomain.com
+  ```
+  
+  **Default:** Uses the public ntfy.sh service.
+  
+  **Use case:** Set this if you run a self-hosted ntfy instance for privacy.
+  
+  **Loaded in:** Extracted from `.env.example:28` (not explicitly in `config.go`, may be loaded by handlers)
+</ParamField>
+
+<ParamField path="NTFY_ADMIN_TOPIC" type="string" default="">
+  ntfy topic name for admin alerts (disabled if empty).
+  
+  **Example:**
+  ```bash
+  NTFY_ADMIN_TOPIC=gitgost-admin-alerts
+  ```
+  
+  **Behavior if set:** Admin events (rate limit exceeded, suspicious activity) are sent to this topic.
+  
+  **How to receive:**
+  1. Subscribe to the topic: `https://ntfy.sh/gitgost-admin-alerts`
+  2. Or via CLI: `ntfy subscribe gitgost-admin-alerts`
+  3. Or via mobile app: https://ntfy.sh/docs/subscribe/phone/
+  
+  **Security:** Choose a unique, random topic name to avoid unauthorized subscriptions.
+  
+  **Loaded in:** `internal/config/config.go:35`
+  
+  **Initialized in:** `cmd/server/main.go:51`
+</ParamField>
+
+<ParamField path="SERVICE_URL" type="string" default="https://gitgost.leapcell.app">
+  Public-facing URL of the gitGost service.
+  
+  **Example:**
+  ```bash
+  SERVICE_URL=https://gitgost.yourdomain.com
+  ```
+  
+  **Use case:** Used in ntfy notification action buttons (e.g., "Activate Panic", "Deactivate Panic").
+  
+  **Recommendation:** Set this to your actual domain in production.
+  
+  **Loaded in:** Extracted from `.env.example:31` (not explicitly in `config.go`)
+</ParamField>
+
+## Admin & Security
+
+Variables for administrative control and security features.
+
+<ParamField path="PANIC_PASSWORD" type="string" default="">
+  Password for the panic button endpoint (disabled if empty).
+  
+  **Required for production:** This password protects the `/admin/panic` and `/admin/rollback` endpoints.
+  
+  **Example:**
+  ```bash
+  PANIC_PASSWORD=my-very-strong-random-password-12345
+  ```
+  
+  **Security:**
+  - Use a strong, unique password (min 20 characters recommended).
+  - Never use default values.
+  - Store securely (e.g., in a password manager or secrets vault).
+  - Rotate periodically.
+  
+  **Usage:**
+  ```bash
+  # Suspend service
+  curl -X POST https://gitgost.yourdomain.com/admin/panic \
+    -H "Content-Type: application/json" \
+    -d '{"password":"my-very-strong-random-password-12345","active":true}'
+  
+  # Restore service
+  curl -X POST https://gitgost.yourdomain.com/admin/panic \
+    -H "Content-Type: application/json" \
+    -d '{"password":"my-very-strong-random-password-12345","active":false}'
+  ```
+  
+  **Rate limiting:** The `/admin/panic` endpoint is protected by strict per-IP rate limiting (10 requests/IP/minute, see `internal/http/router.go:15-19`).
+  
+  **Loaded in:** `internal/config/config.go:34`
+  
+  **Initialized in:** `cmd/server/main.go:51`
+</ParamField>
+
+## Build Information (Optional)
+
+These are typically set at build time via `-ldflags`, but can also be environment variables.
+
+<ParamField path="COMMIT_HASH" type="string" default="main">
+  Git commit hash of the build.
+  
+  **Example:**
+  ```bash
+  COMMIT_HASH=abc1234
+  ```
+  
+  **Typically set via:**
+  ```bash
+  go build -ldflags "-X main.commitHash=$(git rev-parse --short HEAD)" ./cmd/server
+  ```
+  
+  **Exposed in:** `/health` endpoint and build info.
+  
+  **Loaded in:** `cmd/server/main.go:16-31`
+</ParamField>
+
+## Configuration Summary Table
+
+### Required Variables
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `GITHUB_TOKEN` | `string` | GitHub API token with `repo` permissions |
+
+### Optional Variables
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `PORT` | `string` | `8080` | Server listening port |
+| `READ_TIMEOUT` | `duration` | `30s` | HTTP read timeout |
+| `WRITE_TIMEOUT` | `duration` | `30s` | HTTP write timeout |
+| `LOG_FORMAT` | `string` | `text` | Log format (`text` or `json`) |
+| `GITGOST_API_KEY` | `string` | `""` | API key for non-git endpoints |
+| `SUPABASE_URL` | `string` | `""` | Supabase project URL |
+| `SUPABASE_KEY` | `string` | `""` | Supabase API key |
+| `PANIC_PASSWORD` | `string` | `""` | Admin panic button password |
+| `NTFY_ADMIN_TOPIC` | `string` | `""` | ntfy topic for admin alerts |
+| `NTFY_BASE_URL` | `string` | `https://ntfy.sh` | ntfy service URL |
+| `SERVICE_URL` | `string` | `https://gitgost.leapcell.app` | Public service URL |
+
+## Environment File Example
+
+Complete `.env` file with all variables:
+
+```bash .env
+# ============================================
+# gitGost Environment Configuration
+# ============================================
+
+# -------------------- REQUIRED --------------------
+
+# GitHub personal access token with repo permissions
+# Get from: https://github.com/settings/tokens
+GITHUB_TOKEN=ghp_your_actual_token_here
+
+# -------------------- SERVER --------------------
+
+# Server port (default: 8080)
+PORT=8080
+
+# HTTP timeouts (default: 30s)
+READ_TIMEOUT=30s
+WRITE_TIMEOUT=30s
+
+# Log format: "text" or "json" (default: text)
+LOG_FORMAT=json
+
+# -------------------- AUTHENTICATION --------------------
+
+# API key for non-git endpoints (optional, no auth if empty)
+GITGOST_API_KEY=gitgost-secure-key-12345
+
+# -------------------- DATABASE --------------------
+
+# Supabase configuration for persistent stats (optional)
+# Get from: https://supabase.com/dashboard
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_supabase_anon_key_here
+
+# -------------------- NOTIFICATIONS --------------------
+
+# ntfy base URL (default: https://ntfy.sh)
+NTFY_BASE_URL=https://ntfy.sh
+
+# ntfy topic for admin alerts (optional)
+NTFY_ADMIN_TOPIC=gitgost-admin-alerts
+
+# Public service URL for ntfy action buttons
+SERVICE_URL=https://gitgost.yourdomain.com
+
+# -------------------- ADMIN & SECURITY --------------------
+
+# Panic button password (REQUIRED for production)
+# Use a strong, unique password
+PANIC_PASSWORD=my-very-strong-random-password-12345
+```
+
+## Validation Script
+
+Create a script to validate your environment configuration:
+
+```bash validate-env.sh
+#!/bin/bash
+set -e
+
+echo "=== gitGost Environment Validation ==="
+
+# Load .env if it exists
+if [ -f .env ]; then
+    export $(cat .env | grep -v '^#' | xargs)
+fi
+
+# Check required variables
+if [ -z "$GITHUB_TOKEN" ]; then
+    echo "❌ GITHUB_TOKEN is not set (REQUIRED)"
+    exit 1
+else
+    echo "✅ GITHUB_TOKEN is set"
+fi
+
+# Check optional but recommended variables
+if [ -z "$PANIC_PASSWORD" ]; then
+    echo "⚠️  PANIC_PASSWORD is not set (recommended for production)"
+else
+    echo "✅ PANIC_PASSWORD is set"
+fi
+
+if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+    echo "⚠️  Supabase is not configured (stats will not be persisted)"
+else
+    echo "✅ Supabase is configured"
+fi
+
+# Validate GitHub token
+echo ""
+echo "Testing GitHub API access..."
+RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/user)
+USERNAME=$(echo $RESPONSE | grep -o '"login":"[^"]*' | cut -d'"' -f4)
+
+if [ -n "$USERNAME" ]; then
+    echo "✅ GitHub token is valid (logged in as: $USERNAME)"
+else
+    echo "❌ GitHub token is invalid or lacks permissions"
+    exit 1
+fi
+
+# Test Supabase connection if configured
+if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_KEY" ]; then
+    echo ""
+    echo "Testing Supabase connection..."
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+        "$SUPABASE_URL/rest/v1/" \
+        -H "apikey: $SUPABASE_KEY" \
+        -H "Authorization: Bearer $SUPABASE_KEY")
+    
+    if [ "$STATUS" != "401" ]; then
+        echo "✅ Supabase connection successful (HTTP $STATUS)"
+    else
+        echo "❌ Supabase authentication failed (HTTP $STATUS)"
+    fi
+fi
+
+echo ""
+echo "=== Validation Complete ==="
+```
+
+Usage:
+
+```bash
+chmod +x validate-env.sh
+./validate-env.sh
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use .env Files" icon="file">
+    Store environment variables in `.env` files and add them to `.gitignore`.
+  </Card>
+  
+  <Card title="Rotate Secrets" icon="rotate">
+    Rotate `GITHUB_TOKEN` and `PANIC_PASSWORD` periodically.
+  </Card>
+  
+  <Card title="Use JSON Logs" icon="code">
+    Set `LOG_FORMAT=json` in production for structured logging.
+  </Card>
+  
+  <Card title="Enable Supabase" icon="database">
+    Configure Supabase for persistent statistics and analytics.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Variable Not Loading
+
+<AccordionGroup>
+  <Accordion title="Variable is set but not recognized">
+    **Cause:** The `.env` file may not be in the working directory.
+    
+    **Solution:**
+    1. Ensure `.env` is in the same directory as the binary
+    2. Or set the variable directly: `export GITHUB_TOKEN=...`
+    3. Verify with: `env | grep GITHUB_TOKEN`
+  </Accordion>
+
+  <Accordion title="Duration parsing error">
+    **Cause:** Invalid duration format for `READ_TIMEOUT` or `WRITE_TIMEOUT`.
+    
+    **Solution:** Use valid Go duration strings:
+    - ✅ Valid: `30s`, `1m`, `500ms`, `1h30m`
+    - ❌ Invalid: `30`, `1 minute`, `30sec`
+  </Accordion>
+
+  <Accordion title="Supabase not initializing">
+    **Cause:** Both `SUPABASE_URL` and `SUPABASE_KEY` must be set.
+    
+    **Solution:**
+    1. Check both variables are present: `env | grep SUPABASE`
+    2. Verify URL format: `https://xxx.supabase.co` (no trailing slash)
+    3. Test connection manually: `curl "$SUPABASE_URL/rest/v1/" -H "apikey: $SUPABASE_KEY"`
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration Guide" icon="gear" href="/deployment/configuration">
+    Learn how to set up and configure gitGost
+  </Card>
+  <Card title="Requirements" icon="server" href="/deployment/requirements">
+    Review system requirements
+  </Card>
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Deploy with Docker and Docker Compose
+  </Card>
+</CardGroup>

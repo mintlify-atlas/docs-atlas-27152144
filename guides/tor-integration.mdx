@@ -1,0 +1,513 @@
+---
+title: 'Tor Integration'
+description: 'Hide your IP address using Tor for maximum anonymity'
+icon: 'shield'
+---
+
+## Why Use Tor with gitGost?
+
+gitGost strips your name, email, and commit timestamps—but your **IP address** is still visible to the server during the push. If you need stronger anonymity guarantees, route your Git push through the Tor network.
+
+<Note>
+**Tor** routes your connection through three encrypted relay nodes worldwide, so the gitGost server only sees a Tor exit node IP, not yours.
+</Note>
+
+## How Tor Anonymizes Your Push
+
+```mermaid
+graph LR
+    A[Your Computer] -->|Encrypted| B[Tor Entry Node]
+    B -->|Encrypted| C[Tor Middle Node]
+    C -->|Encrypted| D[Tor Exit Node]
+    D -->|HTTPS| E[gitGost Server]
+    
+    style A fill:#4CAF50
+    style E fill:#FF9800
+    style B fill:#2196F3
+    style C fill:#2196F3
+    style D fill:#2196F3
+```
+
+The gitGost server sees the **Tor exit node's IP**, not yours. Combined with gitGost's metadata stripping, this provides strong anonymity.
+
+<Warning>
+Tor is **slow**. A push that normally takes seconds may take **several minutes**. gitGost's 10 MB commit limit is partly sized with Tor in mind.
+</Warning>
+
+## Installation
+
+### Linux (Debian/Ubuntu)
+
+```bash
+sudo apt update
+sudo apt install tor torsocks
+```
+
+### Linux (Arch)
+
+```bash
+sudo pacman -S tor torsocks
+```
+
+### macOS (Homebrew)
+
+```bash
+brew install tor torsocks
+```
+
+### Windows
+
+See [Windows alternatives](#windows-alternatives) below. `torsocks` is not available natively on Windows.
+
+## Starting Tor
+
+<Tabs>
+  <Tab title="Linux (systemd)">
+    ```bash
+    # Start Tor daemon
+    sudo systemctl start tor
+    
+    # Enable on boot (optional)
+    sudo systemctl enable tor
+    
+    # Check status
+    sudo systemctl status tor
+    ```
+  </Tab>
+  
+  <Tab title="Linux (SysV)">
+    ```bash
+    sudo service tor start
+    sudo service tor status
+    ```
+  </Tab>
+  
+  <Tab title="macOS">
+    ```bash
+    # Start Tor as a service
+    brew services start tor
+    
+    # Check if running
+    brew services list | grep tor
+    ```
+  </Tab>
+</Tabs>
+
+Tor listens on `127.0.0.1:9050` (SOCKS5 proxy) by default.
+
+## Pushing Through Tor
+
+<Steps>
+  <Step title="Verify Tor is running">
+    Test that Tor is active:
+    
+    ```bash
+    torsocks curl https://check.torproject.org/api/ip
+    ```
+    
+    Expected output:
+    
+    ```json
+    {"IsTor": true, "IP": "185.220.101.x"}
+    ```
+    
+    <Tip>
+    If you see `"IsTor": false`, Tor is not running. Check the service status.
+    </Tip>
+  </Step>
+
+  <Step title="Push with torsocks">
+    Wrap your Git push with `torsocks`:
+    
+    ```bash
+    torsocks git \
+      -c http.extraHeader="X-Gost-Authorship-Confirmed: 1" \
+      push gost my-feature:main
+    ```
+    
+    The `X-Gost-Authorship-Confirmed` header acknowledges you're making an anonymous contribution.
+  </Step>
+
+  <Step title="Wait for completion">
+    The push will be **significantly slower** due to Tor routing:
+    
+    ```bash
+    Enumerating objects: 5, done.
+    Counting objects: 100% (5/5), done.
+    Delta compression using up to 8 threads
+    Compressing objects: 100% (3/3), done.
+    Writing objects: 100% (3/3), 342 bytes | 342.00 KiB/s, done.
+    Total 3 (delta 2), reused 0 (delta 0), pack-reused 0
+    remote: gitGost: Processing your anonymous contribution...
+    ```
+    
+    <Note>
+    Expect **2-5 minutes** for small pushes, longer for larger ones. This is normal for Tor.
+    </Note>
+  </Step>
+</Steps>
+
+## Persistent Configuration
+
+To avoid typing the full command every time, configure Git:
+
+### Per-Repository
+
+Inside your repository:
+
+```bash
+# Set the authorship header
+git config http.extraHeader "X-Gost-Authorship-Confirmed: 1"
+
+# Now push normally with torsocks
+torsocks git push gost my-branch:main
+```
+
+### Global Alias
+
+Add a `ghost` alias to your `~/.gitconfig`:
+
+```bash
+git config --global alias.ghost '!torsocks git'
+```
+
+Then use:
+
+```bash
+git ghost push gost my-branch:main
+```
+
+### Combined Configuration
+
+For full automation:
+
+```bash
+# Inside your repo
+git config http.extraHeader "X-Gost-Authorship-Confirmed: 1"
+
+# In ~/.gitconfig
+[alias]
+    ghost = "!torsocks git"
+```
+
+Now a simple command does everything:
+
+```bash
+git ghost push gost feature:main
+```
+
+## Windows Alternatives
+
+`torsocks` is not available on Windows natively. Use one of these options:
+
+### Option 1: Tor Browser + SOCKS5 (Easiest)
+
+<Steps>
+  <Step title="Download Tor Browser">
+    Get it from: [https://www.torproject.org/download/](https://www.torproject.org/download/)
+  </Step>
+
+  <Step title="Launch Tor Browser">
+    Open Tor Browser and leave it running. It exposes a SOCKS5 proxy on `127.0.0.1:9150`.
+  </Step>
+
+  <Step title="Configure Git to use the proxy">
+    ```bash
+    # Per-repository
+    git config http.proxy socks5h://127.0.0.1:9150
+    git config http.extraHeader "X-Gost-Authorship-Confirmed: 1"
+    
+    # Or globally (not recommended)
+    git config --global http.proxy socks5h://127.0.0.1:9150
+    ```
+    
+    <Warning>
+    Use `socks5h://` (with the `h`), not `socks5://`. The `h` ensures DNS resolution happens through Tor, preventing DNS leaks.
+    </Warning>
+  </Step>
+
+  <Step title="Push normally">
+    ```bash
+    git push gost my-branch:main
+    ```
+    
+    Git will route through Tor automatically.
+  </Step>
+
+  <Step title="Remove proxy when done">
+    ```bash
+    # Per-repo
+    git config --unset http.proxy
+    
+    # Global (if you set it globally)
+    git config --global --unset http.proxy
+    ```
+  </Step>
+</Steps>
+
+### Option 2: WSL2 (Windows Subsystem for Linux)
+
+If you have WSL2, use the Linux instructions:
+
+```bash
+# Inside WSL2 (Ubuntu/Debian)
+sudo apt update
+sudo apt install tor torsocks
+sudo service tor start
+
+# Verify Tor is working
+torsocks curl https://check.torproject.org/api/ip
+
+# Push through Tor
+torsocks git push gost my-branch:main
+```
+
+<Note>
+WSL2 has its own network stack separate from Windows, so anonymity is preserved correctly.
+</Note>
+
+## Verifying Your IP is Hidden
+
+Before pushing, verify Tor is routing your traffic:
+
+```bash
+torsocks curl https://check.torproject.org/api/ip
+```
+
+Expected response:
+
+```json
+{
+  "IsTor": true,
+  "IP": "185.220.101.42"
+}
+```
+
+The IP shown is the Tor exit node, **not** your real IP.
+
+### Without torsocks (for comparison)
+
+```bash
+curl https://check.torproject.org/api/ip
+```
+
+Response:
+
+```json
+{
+  "IsTor": false,
+  "IP": "203.0.113.45"
+}
+```
+
+This shows your real IP. ❌
+
+## Performance Considerations
+
+### Expected Push Times
+
+| Commit Size | Without Tor | With Tor      |
+|-------------|-------------|---------------|
+| < 1 KB      | 2-5 seconds | 30-60 seconds |
+| 100 KB      | 5-10 seconds| 1-2 minutes   |
+| 1 MB        | 10-20 seconds| 2-5 minutes  |
+| 10 MB       | 30-60 seconds| 5-15 minutes |
+
+<Tip>
+Keep commits small when using Tor. Aim for < 1 MB per commit for reasonable push times.
+</Tip>
+
+### Why is Tor Slow?
+
+Your data passes through **three** relay nodes:
+
+1. **Entry node**: Your computer → Entry (encrypted)
+2. **Middle node**: Entry → Middle (encrypted)
+3. **Exit node**: Middle → Exit (encrypted)
+4. **Destination**: Exit → gitGost (HTTPS)
+
+Each hop adds latency. Additionally, Tor bandwidth is limited by volunteer relay capacity.
+
+## Tor Circuit Changes
+
+Tor rotates circuits periodically. If your push fails mid-transfer:
+
+```bash
+fatal: the remote end hung up unexpectedly
+```
+
+**Solution**: Retry the push. Tor will establish a new circuit.
+
+```bash
+torsocks git push gost my-branch:main
+```
+
+## Advanced: Tor Configuration
+
+Customize Tor behavior by editing `/etc/tor/torrc` (Linux/macOS):
+
+### Use Specific Exit Nodes
+
+Force Tor to use exits in certain countries:
+
+```bash
+# /etc/tor/torrc
+ExitNodes {us},{ca},{gb}
+StrictNodes 1
+```
+
+Restart Tor:
+
+```bash
+sudo systemctl restart tor
+```
+
+### Increase Circuit Timeout
+
+For large pushes:
+
+```bash
+# /etc/tor/torrc
+CircuitBuildTimeout 120
+```
+
+<Warning>
+Modifying Tor configuration can impact anonymity. Only change settings if you understand the implications.
+</Warning>
+
+## Combining Tor with Other Anonymity Practices
+
+For maximum anonymity:
+
+<CardGroup cols={2}>
+  <Card title="Tor Browser" icon="browser">
+    Use Tor Browser (not regular browser) to view your PR after creation. This prevents GitHub from linking your IP to the PR.
+  </Card>
+  
+  <Card title="Unique Style" icon="code">
+    Avoid unique coding patterns. Use common formatting (e.g., `gofmt`, `prettier`) to blend in.
+  </Card>
+  
+  <Card title="Generic Messages" icon="message">
+    Write commit messages in neutral language. Avoid phrases like "I always..." or company-specific jargon.
+  </Card>
+  
+  <Card title="Random Timing" icon="clock">
+    Push at irregular times to avoid timezone correlation. Don't push only during your local work hours.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### "Connection refused" Error
+
+```bash
+fatal: unable to access 'https://gitgost.leapcell.app/...': Failed to connect to 127.0.0.1 port 9050
+```
+
+**Cause**: Tor is not running.
+
+**Solution**: Start Tor:
+
+```bash
+sudo systemctl start tor
+```
+
+### "DNS resolution failed" Error
+
+If using Windows with SOCKS5:
+
+```bash
+fatal: unable to access '...': Could not resolve host
+```
+
+**Cause**: Using `socks5://` instead of `socks5h://`.
+
+**Solution**: Update proxy URL:
+
+```bash
+git config http.proxy socks5h://127.0.0.1:9150
+```
+
+The `h` suffix makes DNS resolution happen through Tor.
+
+### Tor Circuit Building Fails
+
+```bash
+SOCKS error: general failure
+```
+
+**Cause**: Tor can't build a circuit (network issues, firewall).
+
+**Solution**: 
+1. Check Tor logs: `sudo journalctl -u tor -f`
+2. Ensure firewall allows Tor (ports 9001, 9030)
+3. Try using bridges if Tor is blocked in your region
+
+### Push Hangs Indefinitely
+
+If the push hangs for > 20 minutes:
+
+1. Cancel with `Ctrl+C`
+2. Verify Tor is working: `torsocks curl https://check.torproject.org/api/ip`
+3. Retry with a smaller commit
+
+## Security Best Practices
+
+<Warning>
+**Do not mix anonymous and identified activity**. If you push through Tor, don't immediately visit the PR URL from your regular browser without Tor.
+</Warning>
+
+<Tip>
+**Use Tor Browser** to view PRs. This ensures your IP isn't linked to the contribution when you check the PR status.
+</Tip>
+
+### Viewing Your PR Anonymously
+
+After pushing, the gitGost server returns a PR URL:
+
+```bash
+remote: PR URL: https://github.com/owner/repo/pull/123
+```
+
+To view it anonymously:
+
+1. Open **Tor Browser** (not your regular browser)
+2. Navigate to the PR URL
+3. Don't log into GitHub in Tor Browser
+
+This way, GitHub sees a Tor exit node IP, not yours.
+
+## Limitations of Tor Anonymity
+
+<Warning>
+Tor protects your **IP address**, but not:
+- Code style (stylometry)
+- Timing patterns (when you push)
+- Commit message phrasing
+- File naming conventions
+
+Advanced adversaries with significant resources may correlate these signals. Tor + gitGost provides strong anonymity for most threat models, but not nation-state-level adversaries.
+</Warning>
+
+See the [Threat Model](/security/threat-model) for details on what gitGost protects against.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Commit Messages" icon="message" href="/guides/commit-messages">
+    Write effective commit messages without revealing your identity
+  </Card>
+  
+  <Card title="Threat Model" icon="shield-exclamation" href="/security/threat-model">
+    Understand gitGost's anonymity guarantees
+  </Card>
+  
+  <Card title="Anonymous Push" icon="ghost" href="/guides/anonymous-push">
+    Learn what metadata gitGost strips
+  </Card>
+  
+  <Card title="Basic Usage" icon="play" href="/guides/basic-usage">
+    Review core gitGost workflows
+  </Card>
+</CardGroup>

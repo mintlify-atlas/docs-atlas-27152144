@@ -1,0 +1,299 @@
+---
+title: 'Basic Usage'
+description: 'Learn the fundamentals of using gitGost for anonymous contributions'
+icon: 'play'
+---
+
+## Overview
+
+gitGost lets you contribute to any GitHub repository anonymously using standard Git commands. No accounts, tokens, or browser extensions required—just add gitGost as a remote and push.
+
+## Quick Start
+
+<Steps>
+  <Step title="Add gitGost as a remote">
+    Replace `username/repo` with the target repository:
+    
+    ```bash
+    git remote add gost https://gitgost.leapcell.app/v1/gh/username/repo
+    ```
+    
+    <Tip>
+    You can verify your remote was added with `git remote -v`
+    </Tip>
+  </Step>
+
+  <Step title="Create a branch and make changes">
+    ```bash
+    git checkout -b fix-typo
+    # Make your changes
+    git add .
+    git commit -m "fix: typo in documentation"
+    ```
+    
+    <Note>
+    Your commit message becomes the PR description, so make it detailed! See our [commit messages guide](/guides/commit-messages) for best practices.
+    </Note>
+  </Step>
+
+  <Step title="Push to open a PR">
+    ```bash
+    git push gost fix-typo:main
+    ```
+    
+    The PR opens instantly from `@gitgost-anonymous` with your commits fully anonymized.
+  </Step>
+</Steps>
+
+## Understanding the Remote URL
+
+The gitGost remote URL follows this pattern:
+
+```
+https://gitgost.leapcell.app/v1/gh/{owner}/{repo}
+```
+
+- **Service URL**: `https://gitgost.leapcell.app`
+- **API Version**: `/v1`
+- **Provider**: `/gh` (GitHub)
+- **Target**: `{owner}/{repo}`
+
+<Warning>
+Currently, only GitHub (`/gh`) is supported. GitLab, Bitbucket, and Codeberg support is planned.
+</Warning>
+
+## Common Workflows
+
+### Contributing a Quick Fix
+
+For simple one-commit fixes:
+
+```bash
+# Add remote and push in one session
+git remote add gost https://gitgost.leapcell.app/v1/gh/torvalds/linux
+git checkout -b fix-gpio-mapping
+git commit -am "fix: correct GPIO pin mapping in driver
+
+The BCM2835 GPIO mapping was incorrect for pins 23-27.
+This fixes the issue by updating the register offsets."
+git push gost fix-gpio-mapping:main
+```
+
+### Working on Multiple Contributions
+
+Manage multiple anonymous PRs to different repositories:
+
+```bash
+# In repo-one/
+cd ~/projects/repo-one
+git remote add gost https://gitgost.leapcell.app/v1/gh/org/repo-one
+git push gost feature-x:main
+
+# In repo-two/
+cd ~/projects/repo-two
+git remote add gost https://gitgost.leapcell.app/v1/gh/org/repo-two
+git push gost feature-y:main
+```
+
+### Testing Changes Locally First
+
+Before pushing anonymously, test your changes:
+
+```bash
+# Work on your feature
+git checkout -b new-feature
+# ... make changes ...
+git commit -am "feat: add new capability"
+
+# Test locally (if applicable)
+npm test
+npm run build
+
+# Push anonymously once tests pass
+git push gost new-feature:main
+```
+
+## What Happens During a Push
+
+When you push to gitGost, the service:
+
+<Steps>
+  <Step title="Receives your commits">
+    gitGost accepts the packfile from your Git client using the Smart HTTP protocol.
+  </Step>
+
+  <Step title="Strips identifying metadata">
+    All author information, committer details, and timestamps are replaced:
+    
+    ```go
+    // From internal/git/receive.go
+    anonSignature := object.Signature{
+        Name:  "@gitgost-anonymous",
+        Email: "anonymous@gitgost.local",
+        When:  time.Now(),
+    }
+    ```
+  </Step>
+
+  <Step title="Creates a fork">
+    A fork is created under the `@gitgost-anonymous` bot account if one doesn't exist.
+  </Step>
+
+  <Step title="Pushes anonymized commits">
+    The rewritten commits are pushed to the fork on a new branch.
+  </Step>
+
+  <Step title="Opens a PR">
+    A pull request is created from the fork to the original repository.
+  </Step>
+</Steps>
+
+<Note>
+Your original commit message is preserved in the PR description, but all authorship metadata is removed from the Git history.
+</Note>
+
+## Push Response
+
+After a successful push, you'll see:
+
+```bash
+remote: gitGost: Processing your anonymous contribution...
+remote: gitGost: Commits anonymized successfully
+remote: gitGost: Creating fork...
+remote: gitGost: Fork ready at gitgost-anonymous/repo
+remote: gitGost: Pushing to fork...
+remote: gitGost: Branch 'gitgost-1234567890' created
+remote: gitGost: Creating pull request...
+remote: 
+remote: ========================================
+remote: SUCCESS! Pull Request Created
+remote: ========================================
+remote: 
+remote: PR URL: https://github.com/owner/repo/pull/123
+remote: Author: @gitgost-anonymous
+remote: Branch: gitgost-1234567890
+remote: PR Hash: a3f8c1d2
+remote: 
+remote: Subscribe to PR notifications (no account needed):
+remote:   https://ntfy.sh/gitgost-pr-a3f8c1d2
+remote: 
+remote: To update this PR on future pushes, use:
+remote:   git push gost <branch>:main -o pr-hash=a3f8c1d2
+```
+
+## Branch Naming
+
+By default, gitGost generates unique branch names:
+
+```
+gitgost-{timestamp}
+```
+
+For example: `gitgost-1709678123`
+
+This ensures no branch name conflicts and makes each contribution independent.
+
+## Updating Your Remote
+
+You can update the gitGost remote URL if needed:
+
+```bash
+# Update existing remote
+git remote set-url gost https://gitgost.leapcell.app/v1/gh/new-owner/new-repo
+
+# Or remove and re-add
+git remote remove gost
+git remote add gost https://gitgost.leapcell.app/v1/gh/owner/repo
+```
+
+## Removing the Remote
+
+When you're done:
+
+```bash
+git remote remove gost
+```
+
+## Service Limits
+
+gitGost enforces reasonable limits to prevent abuse:
+
+<CardGroup cols={2}>
+  <Card title="Rate Limit" icon="gauge-high">
+    **5 PRs per IP per hour**
+    
+    Prevents spam while allowing legitimate contributions.
+  </Card>
+  
+  <Card title="Repository Size" icon="database">
+    **≤ 500 MB**
+    
+    The target repository must be under 500 MB.
+  </Card>
+  
+  <Card title="Commit Size" icon="file">
+    **≤ 10 MB per commit**
+    
+    Individual commits must be under 10 MB.
+  </Card>
+  
+  <Card title="Validation" icon="shield-check">
+    **Full validation**
+    
+    All refs and objects are validated for security.
+  </Card>
+</CardGroup>
+
+<Warning>
+If you exceed the rate limit, you'll receive an error message. Wait an hour and try again, or use [Tor integration](/guides/tor-integration) to mask your IP.
+</Warning>
+
+## Troubleshooting
+
+### Push Failed: Repository Not Found
+
+The target repository doesn't exist or is private:
+
+```bash
+error: RPC failed; HTTP 404
+```
+
+**Solution**: Verify the repository exists and is public. gitGost only works with public repositories.
+
+### Push Rejected: Rate Limit Exceeded
+
+```bash
+remote: Rate limit exceeded: max 5 PRs per hour per IP.
+remote: Please try again later.
+```
+
+**Solution**: Wait one hour, or use [Tor](/guides/tor-integration) to route through a different IP.
+
+### Authentication Required
+
+gitGost doesn't require authentication. If you see auth prompts, verify your remote URL:
+
+```bash
+git remote -v
+# Should show: gost https://gitgost.leapcell.app/v1/gh/owner/repo
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Anonymous Push" icon="ghost" href="/guides/anonymous-push">
+    Deep dive into how anonymous pushing works
+  </Card>
+  
+  <Card title="Commit Messages" icon="message" href="/guides/commit-messages">
+    Write effective commit messages for anonymous PRs
+  </Card>
+  
+  <Card title="Tor Integration" icon="shield" href="/guides/tor-integration">
+    Hide your IP address with Tor
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api-reference/git/receive-pack">
+    Technical details of the Git protocol
+  </Card>
+</CardGroup>

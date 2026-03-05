@@ -1,0 +1,324 @@
+---
+title: 'Health & Metrics'
+description: 'Service health checks, uptime monitoring, and runtime metrics'
+---
+
+## Overview
+
+Health and metrics endpoints provide service status information, deployment details, and runtime performance data for monitoring and verification.
+
+## GET /health
+
+Retrieve service health status and deployment information.
+
+### Request
+
+<CodeGroup>
+```bash cURL
+curl https://gitgost.leapcell.app/health
+```
+
+```javascript JavaScript
+fetch('https://gitgost.leapcell.app/health')
+  .then(res => res.json())
+  .then(data => console.log(data));
+```
+
+```python Python
+import requests
+
+response = requests.get('https://gitgost.leapcell.app/health')
+health = response.json()
+print(health)
+```
+</CodeGroup>
+
+### Response
+
+<ResponseField name="status" type="string" required>
+  Service health status. Always returns `"healthy"` when responding.
+</ResponseField>
+
+<ResponseField name="deployedCommit" type="string" required>
+  Full Git commit hash of the currently deployed version
+</ResponseField>
+
+<ResponseField name="deployedAt" type="string" required>
+  Build timestamp of the deployed binary (ISO 8601 format or "unknown" if not set)
+</ResponseField>
+
+<ResponseField name="sourceRepo" type="string" required>
+  GitHub repository URL where the source code is hosted
+</ResponseField>
+
+<ResponseField name="leapcell" type="boolean" required>
+  Indicates deployment on Leapcell platform. Always `true` for the official instance.
+</ResponseField>
+
+<ResponseField name="goVersion" type="string" required>
+  Go runtime version used to compile the binary (e.g., `go1.21.5`)
+</ResponseField>
+
+<ResponseField name="verify" type="object" required>
+  Verification links for auditing the deployed code
+  
+  <ResponseField name="verify.github" type="string">
+    Direct link to the commit on GitHub
+  </ResponseField>
+  
+  <ResponseField name="verify.source" type="string">
+    Verification notice indicating full auditability
+  </ResponseField>
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "status": "healthy",
+  "deployedCommit": "a3f2c1e9b7d4f8a2c5e1d9b4f7a8c3e6d2b5f9a1",
+  "deployedAt": "2026-03-05T10:23:45Z",
+  "sourceRepo": "https://github.com/livrasand/gitGost",
+  "leapcell": true,
+  "goVersion": "go1.21.5",
+  "verify": {
+    "github": "https://github.com/livrasand/gitGost/commit/a3f2c1e9b7d4f8a2c5e1d9b4f7a8c3e6d2b5f9a1",
+    "source": "100% open source - auditable"
+  }
+}
+```
+
+### Use Cases
+
+#### Uptime Monitoring
+
+```bash Healthcheck Script
+#!/bin/bash
+STATUS=$(curl -s https://gitgost.leapcell.app/health | jq -r '.status')
+if [ "$STATUS" != "healthy" ]; then
+  echo "gitGost is down!"
+  exit 1
+fi
+```
+
+#### Deployment Verification
+
+```bash Verify Deployment
+# Check what commit is currently deployed
+curl -s https://gitgost.leapcell.app/health | jq -r '.deployedCommit'
+
+# Verify the commit exists on GitHub
+COMMIT=$(curl -s https://gitgost.leapcell.app/health | jq -r '.deployedCommit')
+open "https://github.com/livrasand/gitGost/commit/$COMMIT"
+```
+
+#### CI/CD Integration
+
+```yaml GitHub Actions
+steps:
+  - name: Check gitGost Health
+    run: |
+      HEALTH=$(curl -sf https://gitgost.leapcell.app/health)
+      echo "Service status: $(echo $HEALTH | jq -r '.status')"
+      echo "Deployed commit: $(echo $HEALTH | jq -r '.deployedCommit')"
+```
+
+## GET /metrics
+
+Retrieve runtime performance metrics.
+
+### Request
+
+<CodeGroup>
+```bash cURL
+curl https://gitgost.leapcell.app/metrics
+```
+
+```javascript JavaScript
+fetch('https://gitgost.leapcell.app/metrics')
+  .then(res => res.json())
+  .then(data => console.log(data));
+```
+
+```python Python
+import requests
+
+response = requests.get('https://gitgost.leapcell.app/metrics')
+metrics = response.json()
+print(metrics)
+```
+</CodeGroup>
+
+### Response
+
+<ResponseField name="memory" type="object" required>
+  Memory usage statistics from Go runtime
+  
+  <ResponseField name="memory.alloc" type="integer">
+    Bytes of allocated heap objects (currently in use)
+  </ResponseField>
+  
+  <ResponseField name="memory.total_alloc" type="integer">
+    Cumulative bytes allocated for heap objects (lifetime total)
+  </ResponseField>
+  
+  <ResponseField name="memory.sys" type="integer">
+    Total bytes of memory obtained from the OS
+  </ResponseField>
+  
+  <ResponseField name="memory.num_gc" type="integer">
+    Number of completed garbage collection cycles
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="goroutines" type="integer" required>
+  Number of currently active goroutines
+</ResponseField>
+
+<ResponseField name="uptime" type="string" required>
+  Service uptime since last restart (human-readable duration, e.g., "4h23m15s")
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "memory": {
+    "alloc": 12485632,
+    "total_alloc": 245678912,
+    "sys": 35782656,
+    "num_gc": 42
+  },
+  "goroutines": 23,
+  "uptime": "4h23m15.234567s"
+}
+```
+
+### Metric Interpretation
+
+| Metric | Meaning | Healthy Range |
+|--------|---------|---------------|
+| `memory.alloc` | Current heap usage | < 500 MB typical |
+| `memory.sys` | Total OS memory | < 1 GB typical |
+| `goroutines` | Concurrent operations | 10-100 normal |
+| `uptime` | Time since restart | Higher = stable |
+
+### Use Cases
+
+#### Performance Monitoring
+
+```bash Monitor Memory Growth
+while true; do
+  ALLOC=$(curl -s https://gitgost.leapcell.app/metrics | jq '.memory.alloc')
+  echo "$(date): Memory: $((ALLOC / 1024 / 1024)) MB"
+  sleep 60
+done
+```
+
+#### Alert on High Goroutine Count
+
+```bash Goroutine Monitor
+GOROUTINES=$(curl -s https://gitgost.leapcell.app/metrics | jq '.goroutines')
+if [ "$GOROUTINES" -gt 200 ]; then
+  echo "WARNING: High goroutine count: $GOROUTINES"
+fi
+```
+
+## GET /api/status
+
+Retrieve current service operational status (used by frontend).
+
+### Request
+
+<CodeGroup>
+```bash cURL
+curl https://gitgost.leapcell.app/api/status
+```
+
+```javascript JavaScript
+fetch('https://gitgost.leapcell.app/api/status')
+  .then(res => res.json())
+  .then(data => {
+    if (data.panic_mode) {
+      console.warn('Service is suspended!');
+    }
+  });
+```
+</CodeGroup>
+
+### Response
+
+<ResponseField name="panic_mode" type="boolean" required>
+  Indicates if the service is currently suspended. When `true`, all push operations are rejected.
+</ResponseField>
+
+### Response Example
+
+#### Normal Operation
+
+```json
+{
+  "panic_mode": false
+}
+```
+
+#### Service Suspended
+
+```json
+{
+  "panic_mode": true
+}
+```
+
+### Usage
+
+The frontend polls this endpoint to display service status banners. When panic mode is active:
+
+- All Git push operations are rejected with an explanatory message
+- The website shows a prominent suspension notice
+- The deployed badge changes to red
+
+See [Moderation](/operations/moderation) for panic mode control.
+
+## Security Notes
+
+### Exposed Information
+
+All health endpoints expose **only public information**:
+
+- Git commit hashes (public on GitHub)
+- Build timestamps (non-sensitive)
+- Memory/runtime stats (non-sensitive)
+- Service status (public)
+
+### No Sensitive Data
+
+These endpoints **never expose**:
+
+- Environment variables
+- API tokens or secrets
+- Database credentials
+- User data or IP addresses
+- Internal configuration
+
+### No Authentication Required
+
+Health and metrics endpoints are intentionally public for:
+
+- Uptime monitoring services
+- Transparency and verification
+- Operational observability
+- Trust building through openness
+
+## Implementation Reference
+
+Source: `internal/http/handlers.go`
+
+- `HealthHandler` (lines 493-506)
+- `MetricsHandler` (lines 508-522)
+- `ServiceStatusHandler` (lines 817-822)
+- `SetBuildInfo` (lines 531-535)
+- Build info variables (lines 524-528)
+- Runtime tracking (lines 537-538)
+
+Router configuration: `internal/http/router.go` (lines 140-141, 215)

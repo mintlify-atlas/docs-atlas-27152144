@@ -1,0 +1,518 @@
+---
+title: Docker Deployment
+description: Deploy gitGost using Docker and Docker Compose
+---
+
+## Overview
+
+While gitGost does not currently ship with an official Dockerfile, deploying via Docker is straightforward. This guide provides production-ready Docker configurations.
+
+<Info>
+  The gitGost repository does not include a `Dockerfile` yet. This guide provides a reference implementation you can use.
+</Info>
+
+## Creating a Dockerfile
+
+Create a `Dockerfile` in the root of the gitGost repository:
+
+```dockerfile Dockerfile
+# Build stage
+FROM golang:1.22-alpine AS builder
+
+# Install git (required for go mod download with private repos)
+RUN apk add --no-cache git
+
+# Set working directory
+WORKDIR /build
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build with version info
+ARG COMMIT_HASH=unknown
+ARG BUILD_TIME=unknown
+RUN go build -ldflags "-w -s -X main.commitHash=${COMMIT_HASH} -X main.buildTime=${BUILD_TIME}" \
+    -o gitgost ./cmd/server
+
+# Runtime stage
+FROM alpine:latest
+
+# Install git and ca-certificates (required for GitHub API)
+RUN apk add --no-cache git ca-certificates
+
+# Create non-root user
+RUN addgroup -g 1000 gitgost && \
+    adduser -D -u 1000 -G gitgost gitgost
+
+# Set working directory
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /build/gitgost .
+
+# Copy web assets if they exist
+COPY --from=builder /build/web ./web
+
+# Change ownership
+RUN chown -R gitgost:gitgost /app
+
+# Switch to non-root user
+USER gitgost
+
+# Expose default port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+
+# Run the server
+CMD ["./gitgost"]
+```
+
+## Building the Docker Image
+
+<Steps>
+  <Step title="Build with version info">
+    ```bash
+    docker build \
+      --build-arg COMMIT_HASH=$(git rev-parse --short HEAD) \
+      --build-arg BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+      -t gitgost:latest \
+      .
+    ```
+  </Step>
+
+  <Step title="Verify the image">
+    ```bash
+    docker images | grep gitgost
+    
+    # Expected output:
+    # gitgost      latest    abc123def456   2 minutes ago   25MB
+    ```
+  </Step>
+
+  <Step title="Test run">
+    ```bash
+    docker run --rm -p 8080:8080 \
+      -e GITHUB_TOKEN=your_token \
+      gitgost:latest
+    ```
+  </Step>
+</Steps>
+
+## Docker Run Command
+
+For a simple deployment without Docker Compose:
+
+```bash
+docker run -d \
+  --name gitgost \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -e GITHUB_TOKEN="your_github_token" \
+  -e GITGOST_API_KEY="your_api_key" \
+  -e SUPABASE_URL="https://your-project.supabase.co" \
+  -e SUPABASE_KEY="your_supabase_key" \
+  -e PANIC_PASSWORD="your_strong_password" \
+  -e NTFY_ADMIN_TOPIC="gitgost-admin-alerts" \
+  -e LOG_FORMAT="json" \
+  gitgost:latest
+```
+
+### Using an .env file
+
+```bash
+# Create .env file
+cat > .env << 'EOF'
+GITHUB_TOKEN=your_github_token
+GITGOST_API_KEY=your_api_key
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_supabase_key
+PANIC_PASSWORD=your_strong_password
+NTFY_ADMIN_TOPIC=gitgost-admin-alerts
+LOG_FORMAT=json
+EOF
+
+# Run with .env file
+docker run -d \
+  --name gitgost \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  --env-file .env \
+  gitgost:latest
+```
+
+## Docker Compose
+
+### Basic Configuration
+
+Create `docker-compose.yml`:
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  gitgost:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        COMMIT_HASH: ${COMMIT_HASH:-main}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    image: gitgost:latest
+    container_name: gitgost
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITGOST_API_KEY=${GITGOST_API_KEY:-}
+      - PORT=8080
+      - LOG_FORMAT=json
+      - READ_TIMEOUT=30s
+      - WRITE_TIMEOUT=30s
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_KEY=${SUPABASE_KEY:-}
+      - PANIC_PASSWORD=${PANIC_PASSWORD}
+      - NTFY_ADMIN_TOPIC=${NTFY_ADMIN_TOPIC:-}
+      - NTFY_BASE_URL=${NTFY_BASE_URL:-https://ntfy.sh}
+      - SERVICE_URL=${SERVICE_URL:-https://gitgost.leapcell.app}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    networks:
+      - gitgost-network
+
+networks:
+  gitgost-network:
+    driver: bridge
+```
+
+### Production Configuration with nginx
+
+Create `docker-compose.prod.yml`:
+
+```yaml docker-compose.prod.yml
+version: '3.8'
+
+services:
+  gitgost:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        COMMIT_HASH: ${COMMIT_HASH:-main}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    image: gitgost:latest
+    container_name: gitgost
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITGOST_API_KEY=${GITGOST_API_KEY:-}
+      - PORT=8080
+      - LOG_FORMAT=json
+      - READ_TIMEOUT=30s
+      - WRITE_TIMEOUT=30s
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - PANIC_PASSWORD=${PANIC_PASSWORD}
+      - NTFY_ADMIN_TOPIC=${NTFY_ADMIN_TOPIC}
+      - NTFY_BASE_URL=${NTFY_BASE_URL:-https://ntfy.sh}
+      - SERVICE_URL=${SERVICE_URL}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    networks:
+      - gitgost-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: gitgost-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./logs:/var/log/nginx
+    depends_on:
+      - gitgost
+    networks:
+      - gitgost-network
+
+networks:
+  gitgost-network:
+    driver: bridge
+```
+
+Create `nginx.conf`:
+
+```nginx nginx.conf
+events {
+    worker_connections 1024;
+}
+
+http {
+    upstream gitgost {
+        server gitgost:8080;
+    }
+
+    # Rate limiting
+    limit_req_zone $binary_remote_addr zone=push_limit:10m rate=5r/h;
+    limit_req_zone $binary_remote_addr zone=admin_limit:10m rate=10r/m;
+
+    server {
+        listen 80;
+        server_name _;
+        return 301 https://$host$request_uri;
+    }
+
+    server {
+        listen 443 ssl http2;
+        server_name _;
+
+        ssl_certificate /etc/nginx/ssl/fullchain.pem;
+        ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+
+        # Security headers
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+
+        # Max body size
+        client_max_body_size 100M;
+
+        # Push endpoints (rate limited)
+        location ~ ^/v1/gh/.*/git-receive-pack$ {
+            limit_req zone=push_limit burst=2 nodelay;
+            proxy_pass http://gitgost;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 300s;
+            proxy_connect_timeout 75s;
+        }
+
+        # Admin endpoints (strict rate limiting)
+        location /admin/ {
+            limit_req zone=admin_limit burst=5 nodelay;
+            proxy_pass http://gitgost;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # All other endpoints
+        location / {
+            proxy_pass http://gitgost;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+    }
+}
+```
+
+### Usage
+
+<Steps>
+  <Step title="Create .env file">
+    ```bash
+    cp .env.example .env
+    # Edit .env with your configuration
+    ```
+  </Step>
+
+  <Step title="Start services">
+    <CodeGroup>
+    
+    ```bash Basic
+    docker-compose up -d
+    ```
+    
+    ```bash Production
+    docker-compose -f docker-compose.prod.yml up -d
+    ```
+    
+    </CodeGroup>
+  </Step>
+
+  <Step title="View logs">
+    ```bash
+    docker-compose logs -f gitgost
+    ```
+  </Step>
+
+  <Step title="Stop services">
+    ```bash
+    docker-compose down
+    ```
+  </Step>
+</Steps>
+
+## Volume Mounts
+
+gitGost does **not** require persistent volumes by design. All git operations are ephemeral.
+
+<Warning>
+  Do **not** mount `/tmp` or other writable directories unless you understand the security implications. gitGost is designed to be stateless.
+</Warning>
+
+### Optional: Persistent Logs
+
+If you want to persist logs outside the container:
+
+```yaml
+services:
+  gitgost:
+    # ... other config ...
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - LOG_FORMAT=json
+```
+
+## Port Mappings
+
+| Container Port | Host Port | Purpose |
+|----------------|-----------|----------|
+| `8080` | `8080` (or custom) | Main HTTP server |
+
+<Info>
+  gitGost uses a single port for all operations (health, metrics, git-receive-pack, admin, etc.).
+</Info>
+
+## Multi-Architecture Builds
+
+To build for multiple platforms (e.g., ARM64 for Raspberry Pi):
+
+```bash
+# Enable Docker buildx
+docker buildx create --use
+
+# Build for multiple architectures
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --build-arg COMMIT_HASH=$(git rev-parse --short HEAD) \
+  --build-arg BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+  -t your-registry/gitgost:latest \
+  --push \
+  .
+```
+
+## Container Registry
+
+### Push to Docker Hub
+
+```bash
+# Tag the image
+docker tag gitgost:latest yourusername/gitgost:latest
+docker tag gitgost:latest yourusername/gitgost:$(git rev-parse --short HEAD)
+
+# Push
+docker push yourusername/gitgost:latest
+docker push yourusername/gitgost:$(git rev-parse --short HEAD)
+```
+
+### Push to GitHub Container Registry
+
+```bash
+# Login to GHCR
+echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+
+# Tag
+docker tag gitgost:latest ghcr.io/livrasand/gitgost:latest
+
+# Push
+docker push ghcr.io/livrasand/gitgost:latest
+```
+
+## Troubleshooting
+
+### Container Exits Immediately
+
+```bash
+# Check logs
+docker logs gitgost
+
+# Common causes:
+# - Missing GITHUB_TOKEN
+# - Invalid environment variables
+# - Port 8080 already in use on host
+```
+
+### Health Check Failing
+
+```bash
+# Test manually
+docker exec gitgost wget --no-verbose --tries=1 --spider http://localhost:8080/health
+
+# Check service status
+curl http://localhost:8080/health
+```
+
+### Build Fails
+
+```bash
+# Clean build cache
+docker builder prune -a
+
+# Rebuild without cache
+docker build --no-cache -t gitgost:latest .
+```
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Secrets" icon="lock">
+    Use Docker secrets or environment files instead of hardcoding credentials in docker-compose.yml.
+  </Card>
+  
+  <Card title="Run as Non-Root" icon="user">
+    The Dockerfile provided runs as a non-root user (UID 1000) for security.
+  </Card>
+  
+  <Card title="Network Isolation" icon="network-wired">
+    Use custom networks to isolate gitGost from other containers.
+  </Card>
+  
+  <Card title="TLS Termination" icon="shield">
+    Always use a reverse proxy (nginx, Traefik, Caddy) with TLS for production.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="list" href="/deployment/environment-variables">
+    Complete reference of all configuration options
+  </Card>
+  <Card title="Configuration" icon="gear" href="/deployment/configuration">
+    Advanced configuration and production hardening
+  </Card>
+  <Card title="Requirements" icon="server" href="/deployment/requirements">
+    System requirements and prerequisites
+  </Card>
+</CardGroup>

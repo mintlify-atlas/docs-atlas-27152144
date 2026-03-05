@@ -1,0 +1,392 @@
+---
+title: Configuration Guide
+description: Complete setup workflow for configuring and running gitGost
+---
+
+## Overview
+
+This guide walks you through the complete configuration process, from cloning the repository to starting the server.
+
+## Configuration Loading
+
+gitGost uses a simple configuration system that loads settings from environment variables with sensible defaults.
+
+<Info>
+  Configuration is loaded via `internal/config/config.go:24` using the `Load()` function.
+</Info>
+
+### Load Order
+
+<Steps>
+  <Step title="Environment Variables">
+    The application first looks for environment variables in the system.
+  </Step>
+  
+  <Step title=".env File">
+    If a `.env` file exists in the working directory, it's loaded automatically via `godotenv.Load()` (see `cmd/server/main.go:24`).
+  </Step>
+  
+  <Step title="Defaults">
+    If a variable is not set, the application falls back to built-in defaults.
+  </Step>
+</Steps>
+
+## Complete Setup Workflow
+
+### 1. Clone and Build
+
+```bash
+# Clone the repository
+git clone https://github.com/livrasand/gitGost.git
+cd gitGost
+
+# Build the binary
+go build -o gitgost ./cmd/server
+
+# Or build with version info
+go build -ldflags "-X main.commitHash=$(git rev-parse --short HEAD) -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  -o gitgost ./cmd/server
+```
+
+### 2. Create Configuration File
+
+Copy the example environment file:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your configuration:
+
+```bash .env
+# Required: GitHub personal access token with repo permissions
+# Get one from: https://github.com/settings/tokens
+GITHUB_TOKEN=ghp_your_actual_token_here
+
+# Optional: API key for authentication (if not set, no auth required)
+GITGOST_API_KEY=your-secure-api-key-here
+
+# Optional: Server port (default: 8080)
+PORT=8080
+
+# Optional: Log format - "text" or "json" (default: text)
+LOG_FORMAT=text
+
+# Optional: HTTP timeouts (default: 30s)
+READ_TIMEOUT=30s
+WRITE_TIMEOUT=30s
+
+# Supabase Configuration (for persistent stats)
+# Get these from: https://supabase.com/dashboard
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_supabase_anon_key_here
+
+# Optional: ntfy base URL for anonymous PR notifications (default: https://ntfy.sh)
+NTFY_BASE_URL=https://ntfy.sh
+
+# Optional: public-facing service URL used in ntfy admin action buttons
+SERVICE_URL=https://gitgost.yourdomain.com
+
+# Required for panic button: password to activate/deactivate service suspension
+PANIC_PASSWORD=your-strong-panic-password-here
+
+# Optional: ntfy topic for admin alerts (rate limit exceeded notifications)
+NTFY_ADMIN_TOPIC=gitgost-admin-alerts
+```
+
+### 3. Verify Configuration
+
+Before starting the server, verify your configuration:
+
+<CodeGroup>
+
+```bash Verify GitHub Token
+# Test GitHub API access
+curl -H "Authorization: token $GITHUB_TOKEN" \
+  https://api.github.com/user
+
+# Expected: Your bot account details
+```
+
+```bash Verify Supabase
+# Test Supabase connection
+curl "$SUPABASE_URL/rest/v1/" \
+  -H "apikey: $SUPABASE_KEY" \
+  -H "Authorization: Bearer $SUPABASE_KEY"
+
+# Expected: 404 or schema info (not 401)
+```
+
+```bash Check Port Availability
+# Ensure port 8080 is available
+sudo lsof -i :8080
+
+# Expected: No output (port is free)
+```
+
+</CodeGroup>
+
+### 4. Start the Server
+
+<CodeGroup>
+
+```bash Development
+# Run directly with Go
+go run ./cmd/server
+
+# Or use the built binary
+./gitgost
+```
+
+```bash Production
+# Start as a background service
+nohup ./gitgost > gitgost.log 2>&1 &
+
+# Or use systemd (recommended)
+sudo systemctl start gitgost
+```
+
+</CodeGroup>
+
+Expected output:
+
+```
+Starting server on :8080
+Supabase database initialized (Central Europe - Zurich)
+```
+
+<Warning>
+  If you see "Warning: Supabase not configured, stats will not be persisted", ensure `SUPABASE_URL` and `SUPABASE_KEY` are set correctly.
+</Warning>
+
+### 5. Verify Deployment
+
+Test that the service is running:
+
+<CodeGroup>
+
+```bash Health Check
+curl http://localhost:8080/health
+
+# Expected:
+# {"status":"ok","commit":"abc1234","build_time":"2026-03-05T10:00:00Z"}
+```
+
+```bash Metrics
+curl http://localhost:8080/metrics
+
+# Expected:
+# {"total_prs":0,"active_repos":0,"uptime":"5m30s",...}
+```
+
+```bash Test Push (requires Git setup)
+git remote add gost http://localhost:8080/v1/gh/username/repo
+git push gost test-branch:main
+```
+
+</CodeGroup>
+
+## Repository Configuration (.gitgost.yml)
+
+To signal that a repository welcomes anonymous contributions, add a `.gitgost.yml` file to the repository root:
+
+```yaml .gitgost.yml
+# gitGost Anonymous Contribution Support
+# This file indicates that this repository welcomes anonymous contributions via gitGost.
+```
+
+<Info>
+  This file is **optional** but recommended for transparency. It signals to contributors that anonymous PRs are accepted.
+</Info>
+
+### Badge Support
+
+Repositories with `.gitgost.yml` can use the verified badge:
+
+```markdown
+![Anonymous Contributor Friendly](https://gitgost.leapcell.app/badges/anonymous-friendly.svg?repo=username%2Frepo)
+```
+
+## Configuration Reference
+
+### Config Structure
+
+The configuration is loaded into a `Config` struct defined in `internal/config/config.go:10-21`:
+
+```go
+type Config struct {
+    Port           string        // Server port
+    ReadTimeout    time.Duration // HTTP read timeout
+    WriteTimeout   time.Duration // HTTP write timeout
+    APIKey         string        // Optional API key for non-git endpoints
+    GitHubToken    string        // Required GitHub token
+    LogFormat      string        // "text" or "json"
+    SupabaseURL    string        // Supabase project URL
+    SupabaseKey    string        // Supabase API key
+    PanicPassword  string        // Admin panic button password
+    NtfyAdminTopic string        // ntfy topic for admin alerts
+}
+```
+
+### Default Values
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `8080` | Server listening port |
+| `READ_TIMEOUT` | `30s` | HTTP read timeout |
+| `WRITE_TIMEOUT` | `30s` | HTTP write timeout |
+| `LOG_FORMAT` | `text` | Log output format |
+| `GITGOST_API_KEY` | `""` (no auth) | API key for non-git endpoints |
+
+<Warning>
+  `GITHUB_TOKEN` has no default. The server will start without it, but push operations will fail.
+</Warning>
+
+## Production Hardening
+
+### Reverse Proxy Setup (nginx)
+
+```nginx
+server {
+    listen 80;
+    server_name gitgost.yourdomain.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name gitgost.yourdomain.com;
+
+    ssl_certificate /etc/letsencrypt/live/gitgost.yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/gitgost.yourdomain.com/privkey.pem;
+
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+
+    # Proxy settings
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Increase timeouts for large pushes
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 75s;
+
+        # Handle WebSocket upgrades if needed
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # Limit request body size (100MB max)
+    client_max_body_size 100M;
+}
+```
+
+### Systemd Service
+
+Create `/etc/systemd/system/gitgost.service`:
+
+```ini
+[Unit]
+Description=gitGost Anonymous Contribution Service
+After=network.target
+
+[Service]
+Type=simple
+User=gitgost
+Group=gitgost
+WorkingDirectory=/opt/gitgost
+EnvironmentFile=/opt/gitgost/.env
+ExecStart=/opt/gitgost/gitgost
+Restart=always
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/gitgost
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gitgost
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable gitgost
+sudo systemctl start gitgost
+sudo systemctl status gitgost
+```
+
+## Troubleshooting
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="Server starts but pushes fail">
+    **Cause:** `GITHUB_TOKEN` is invalid or lacks `repo` permissions.
+    
+    **Solution:**
+    1. Verify token at https://github.com/settings/tokens
+    2. Ensure the `repo` scope is selected
+    3. Regenerate if necessary
+    4. Update `.env` and restart the server
+  </Accordion>
+
+  <Accordion title="Stats not persisting">
+    **Cause:** Supabase is not configured or credentials are invalid.
+    
+    **Solution:**
+    1. Check `SUPABASE_URL` and `SUPABASE_KEY` in `.env`
+    2. Test connection: `curl "$SUPABASE_URL/rest/v1/" -H "apikey: $SUPABASE_KEY"`
+    3. If 401, regenerate the key from Supabase dashboard
+  </Accordion>
+
+  <Accordion title="Port 8080 already in use">
+    **Cause:** Another service is using port 8080.
+    
+    **Solution:**
+    1. Change `PORT` in `.env` to an available port (e.g., `8081`)
+    2. Update firewall rules and reverse proxy configuration
+    3. Restart the server
+  </Accordion>
+
+  <Accordion title="Admin panic endpoint returns 401">
+    **Cause:** Incorrect `PANIC_PASSWORD` or missing header.
+    
+    **Solution:**
+    ```bash
+    curl -X POST http://localhost:8080/admin/panic \
+      -H "Content-Type: application/json" \
+      -d '{"password":"your-actual-password","active":true}'
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="list" href="/deployment/environment-variables">
+    Complete reference of all configuration options
+  </Card>
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Deploy using Docker with compose examples
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/overview">
+    Explore the gitGost API endpoints
+  </Card>
+</CardGroup>

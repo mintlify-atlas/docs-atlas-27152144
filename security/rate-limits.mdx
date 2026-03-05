@@ -1,0 +1,615 @@
+---
+title: Rate Limits & Security Measures
+description: Abuse prevention, validation checks, and security limits enforced by gitGost
+---
+
+gitGost enforces multiple layers of security controls to prevent abuse, protect the service, and maintain GitHub's trust. This page documents all rate limits, size restrictions, and validation checks.
+
+## Per-IP Rate Limiting
+
+<Warning>
+  **5 PRs per IP per hour**—the primary abuse prevention mechanism.
+</Warning>
+
+### Implementation
+
+From `handlers.go:559-562`:
+
+```go
+rateLimitStore  = make(map[string][]time.Time) // IP → timestamps
+rateLimitWindow = time.Hour
+rateLimitMaxPRs = 5
+```
+
+### How It Works
+
+<Steps>
+  <Step title="Request Arrives">
+    gitGost extracts the client IP from the TCP connection:
+    ```go
+    // handlers.go:160
+    ip := c.ClientIP()
+    ```
+  </Step>
+  
+  <Step title="Sliding Window Check">
+    The system checks the last 1 hour of push attempts from this IP:
+    ```go
+    // handlers.go:736-749
+    now := time.Now()
+    times := rateLimitStore[ip]
+    valid := times[:0]
+    for _, t := range times {
+        if now.Sub(t) < rateLimitWindow {
+            valid = append(valid, t)
+        }
+    }
+    valid = append(valid, now)
+    rateLimitStore[ip] = valid
+    count := len(valid)
+    ```
+  </Step>
+  
+  <Step title="Limit Enforcement">
+    If count exceeds 5, the request is rejected:
+    ```go
+    // handlers.go:751-759
+    if count > rateLimitMaxPRs {
+        // Reject with git protocol error
+        WriteSidebandLine(&errResp, 2, "remote: Rate limit exceeded")
+        WriteSidebandLine(&errResp, 3, "push rejected: rate limit exceeded")
+        return
+    }
+    ```
+  </Step>
+  
+  <Step title="Admin Notification">
+    On first excess (6th attempt), admin is notified via ntfy:
+    ```go
+    // handlers.go:752-755
+    if count == rateLimitMaxPRs+1 {
+        go notifyAdminRateLimit(ip, count)
+    }
+    ```
+  </Step>
+</Steps>
+
+### User Experience
+
+When rate limit is exceeded, users see:
+
+```bash
+remote: 
+remote: Rate limit exceeded: max 5 PRs per hour per IP.
+remote: Please try again later.
+remote: 
+push rejected: rate limit exceeded
+```
+
+### Bypass Protection
+
+<Note>
+  **In-memory storage** means rate limit resets on service restart. This is intentional:
+  - Prevents disk I/O for every push (performance)
+  - Automatically resets on legitimate service updates
+  - Still effective against botnet attacks (which persist across restarts)
+</Note>
+
+**Cannot be bypassed by:**
+- VPN/Tor rotation during the 1-hour window (IP still tracked)
+- Multiple git remotes (same IP)
+- Different repositories (per-IP, not per-repo)
+
+**Can be bypassed by:**
+- Rotating IPs faster than the 1-hour window (requires botnet or many VPNs)
+- Waiting 1 hour between batches of 5 PRs
+
+## Push Size Limits
+
+### Maximum Push Size: 100 MB
+
+From `router.go:49`:
+
+```go
+const maxPushSize = 100 * 1024 * 1024 // 100MB
+```
+
+Enforced via middleware before push processing:
+
+```go
+// router.go:52-59
+func sizeLimitMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        if c.Request.ContentLength > maxPushSize {
+            c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge,
+                gin.H{"error": "Push too large"})
+            return
+        }
+        c.Next()
+    }
+}
+```
+
+<Warning>
+  Pushes larger than **100 MB** are rejected with HTTP 413 (Request Entity Too Large).
+</Warning>
+
+### Upload Pack Limit: 50 MB
+
+For fetch/pull operations (less critical, but still limited):
+
+```go
+// handlers.go:441
+const maxUploadBytes = 50 * 1024 * 1024 // 50 MB
+```
+
+### Why Size Limits?
+
+<AccordionGroup>
+  <Accordion title="Memory Protection" icon="memory">
+    gitGost processes git packs **in-memory** during anonymization. Large pushes could exhaust server memory.
+  </Accordion>
+  
+  <Accordion title="Abuse Prevention" icon="shield">
+    Prevents attackers from DoS-ing the service with huge binary uploads.
+  </Accordion>
+  
+  <Accordion title="GitHub API Limits" icon="github">
+    GitHub has its own size limits. gitGost aligns with practical GitHub constraints.
+  </Accordion>
+  
+  <Accordion title="Reasonable for Code" icon="code">
+    100 MB is sufficient for:
+    - Large feature branches
+    - Multiple commits
+    - Reasonable binary assets
+    
+    Not sufficient for:
+    - Video files, large datasets (use Git LFS)
+    - Entire repository history dumps
+  </Accordion>
+</AccordionGroup>
+
+### User Experience
+
+When size limit is exceeded:
+
+```bash
+curl -X POST -d @large-pack https://gitgost.leapcell.app/v1/gh/owner/repo/git-receive-pack
+# → HTTP/1.1 413 Request Entity Too Large
+# {"error": "Push too large"}
+```
+
+Git shows:
+
+```bash
+error: RPC failed; HTTP 413 curl 22 The requested URL returned error: 413
+fatal: the remote end hung up unexpectedly
+```
+
+## Repository Name Validation
+
+### Validation Rules
+
+From `router.go:78-93`:
+
+```go
+func isValidRepoName(name string) bool {
+    // 1. Length check
+    if len(name) == 0 || len(name) > 100 {
+        return false
+    }
+    
+    // 2. Character whitelist: alphanumeric + - _ .
+    for _, r := range name {
+        if !((r >= 'a' && r <= 'z') || 
+             (r >= 'A' && r <= 'Z') || 
+             (r >= '0' && r <= '9') || 
+             r == '-' || r == '_' || r == '.') {
+            return false
+        }
+    }
+    
+    // 3. Path traversal prevention
+    if strings.Contains(name, "..") || strings.Contains(name, "/") {
+        return false
+    }
+    
+    return true
+}
+```
+
+### What's Blocked
+
+<CodeGroup>
+```bash Invalid Examples
+# Too long
+gitgost.leapcell.app/v1/gh/user/this-repository-name-is-way-too-long-and-exceeds-the-maximum-allowed-length-of-one-hundred-characters
+# → 400 Bad Request: Invalid repo name
+
+# Path traversal attempt
+gitgost.leapcell.app/v1/gh/../../../etc/passwd/repo
+# → 400 Bad Request: Invalid repo name
+
+# Special characters
+gitgost.leapcell.app/v1/gh/user/repo@main
+# → 400 Bad Request: Invalid repo name
+
+# Slashes
+gitgost.leapcell.app/v1/gh/user/my/nested/repo
+# → 400 Bad Request: Invalid repo name
+```
+
+```bash Valid Examples
+gitgost.leapcell.app/v1/gh/user/my-repo
+gitgost.leapcell.app/v1/gh/org_name/repo.name
+gitgost.leapcell.app/v1/gh/user/repo-123
+gitgost.leapcell.app/v1/gh/User/Repo-Name_v2.0
+```
+</CodeGroup>
+
+### Why Strict Validation?
+
+<Check>**Security:** Prevents path traversal attacks</Check>
+<Check>**Stability:** Avoids file system issues with special characters</Check>
+<Check>**Compatibility:** Aligns with GitHub's repository naming rules</Check>
+
+## Admin Endpoint Rate Limiting
+
+Admin endpoints (panic button, rollback) have **stricter limits**:
+
+### Panic Endpoint: 10 Requests/Minute/IP
+
+From `router.go:14-19`:
+
+```go
+adminLimiterStore = make(map[string][]time.Time)
+adminLimiterMax   = 10
+adminLimiterWin   = time.Minute
+```
+
+Applied to:
+- `POST /admin/panic`
+- `POST /admin/rollback`
+
+### Rollback Endpoint: 5 Requests/Minute
+
+Additional limit specific to rollback:
+
+```go
+// handlers.go:590-591
+rollbackLimitMax   = 5
+rollbackLimitWin   = time.Minute
+```
+
+This prevents accidental mass-closure of legitimate PRs.
+
+## Global Burst Detection
+
+<Info>
+  **Automatic botnet detection** across all IPs.
+</Info>
+
+### How It Works
+
+From `handlers.go:566-572`:
+
+```go
+globalBurstTimes    []time.Time        // timestamps of all pushes
+globalBurstIPs      []string           // IPs corresponding to each push
+globalBurstWindow   = 60 * time.Second // sliding window
+globalBurstMaxTotal = 20               // max pushes globally
+globalBurstMaxIPs   = 10               // max distinct IPs
+```
+
+<Steps>
+  <Step title="Every Push is Recorded Globally">
+    Regardless of IP:
+    ```go
+    // handlers.go:176
+    go recordGlobalBurst(ip)
+    ```
+  </Step>
+  
+  <Step title="Sliding Window Analysis">
+    System checks if in the last 60 seconds:
+    - **20+ total pushes** (across all IPs), OR
+    - **10+ distinct IPs** pushed
+  </Step>
+  
+  <Step title="Alert Trigger">
+    If thresholds exceeded:
+    ```go
+    // handlers.go:695-698
+    if !globalBurstAlerted && 
+       (total >= globalBurstMaxTotal || distinctIPs >= globalBurstMaxIPs) {
+        globalBurstAlerted = true
+        go notifyAdminGlobalBurst(total, distinctIPs)
+    }
+    ```
+  </Step>
+  
+  <Step title="Admin Response">
+    Admin receives ntfy notification with action buttons:
+    - **Activate Panic Mode** (suspend all pushes)
+    - **Close Burst PRs** (rollback recent PRs)
+    - **Deactivate Panic Mode** (resume service)
+  </Step>
+</Steps>
+
+### Why This Matters
+
+<Warning>
+  **Per-IP rate limiting alone is insufficient** against distributed botnets.
+</Warning>
+
+Example attack:
+- Botnet with 100 IPs
+- Each IP pushes 4 PRs (under per-IP limit of 5)
+- Total: 400 PRs in 60 seconds
+- Per-IP limit didn't trigger, but service is overwhelmed
+
+**Global burst detection catches this:**
+- 400 pushes in 60s ≫ 20 threshold → Alert
+- 100 distinct IPs ≫ 10 threshold → Alert
+- Admin activates panic mode, rollback closes all 400 PRs
+
+## Panic Mode
+
+<Warning>
+  **Emergency service suspension** when under attack.
+</Warning>
+
+### Activation
+
+From `handlers.go:789-815`:
+
+```go
+func PanicHandler(c *gin.Context) {
+    // Requires password OR single-use action token
+    authorized := (panicPassword != "" && req.Password == panicPassword) ||
+                  (req.Token != "" && consumeActionToken(req.Token))
+    
+    if !authorized {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+        return
+    }
+    
+    panicMu.Lock()
+    panicMode = req.Active
+    panicMu.Unlock()
+}
+```
+
+### Effect
+
+When panic mode is active:
+
+```go
+// handlers.go:142-157
+if isPanicMode() {
+    WriteSidebandLine(&errResp, 2, "remote: SERVICE TEMPORARILY SUSPENDED")
+    WriteSidebandLine(&errResp, 2, "remote: The panic button has been activated.")
+    WriteSidebandLine(&errResp, 2, "remote: Please try again in 15 minutes.")
+    WriteSidebandLine(&errResp, 3, "push rejected: service temporarily suspended")
+    return
+}
+```
+
+Users see:
+
+```bash
+remote: SERVICE TEMPORARILY SUSPENDED
+remote: The panic button has been activated. The service has been
+remote: temporarily suspended due to detected bot activity
+remote: sending mass PRs. Please try again in 15 minutes.
+push rejected: service temporarily suspended
+```
+
+### Action Tokens (Security)
+
+<Note>
+  **Single-use, time-limited tokens** prevent password exposure in ntfy notifications.
+</Note>
+
+From `handlers.go:616-641`:
+
+```go
+func newActionToken() string {
+    b := make([]byte, 16)
+    rand.Read(b)
+    token := hex.EncodeToString(b)
+    expiry := time.Now().Add(actionTokenTTL) // 10 minutes
+    actionTokens[token] = expiry
+    return token
+}
+
+func consumeActionToken(token string) bool {
+    expiry, ok := actionTokens[token]
+    if !ok {
+        return false
+    }
+    delete(actionTokens, token) // Single-use
+    return time.Now().Before(expiry)
+}
+```
+
+This prevents:
+- Password exposure in ntfy notification URLs
+- Token reuse by third parties who intercept notifications
+- Replay attacks (tokens expire in 10 minutes)
+
+## Rollback System
+
+<Info>
+  **Close all PRs created during a burst** with a single action.
+</Info>
+
+### How It Works
+
+From `handlers.go:826-908`:
+
+<Steps>
+  <Step title="PR Registration During Bursts">
+    When global burst is active, all new PRs are registered:
+    ```go
+    // handlers.go:332-349
+    if isGlobalBurstAlertActive() {
+        recentBurstPRsMu.Lock()
+        recentBurstPRs = append(recentBurstPRs, prURL)
+        recentBurstPRsAt = append(recentBurstPRsAt, nowPR)
+        recentBurstPRsMu.Unlock()
+    }
+    ```
+  </Step>
+  
+  <Step title="Admin Triggers Rollback">
+    Via ntfy action button or direct API call:
+    ```bash
+    curl -X POST https://gitgost.leapcell.app/admin/rollback \
+      -H "Content-Type: application/json" \
+      -d '{"token": "<action-token>"}'
+    ```
+  </Step>
+  
+  <Step title="Concurrent PR Closure">
+    Up to 5 workers close PRs in parallel:
+    ```go
+    // handlers.go:874-900
+    const maxCloseWorkers = 5
+    for _, prURL := range toClose {
+        go func(u string) {
+            if err := github.ClosePRByURL(u); err != nil {
+                failed = append(failed, u)
+            } else {
+                closed = append(closed, u)
+            }
+        }(prURL)
+    }
+    ```
+  </Step>
+  
+  <Step title="Response">
+    Admin receives summary:
+    ```json
+    {
+      "closed": 127,
+      "failed": 3,
+      "closed_urls": ["https://github.com/...", ...],
+      "failed_urls": ["https://github.com/...", ...]
+    }
+    ```
+  </Step>
+</Steps>
+
+### TTL: 2 Hours
+
+PRs are only tracked for rollback for 2 hours:
+
+```go
+// handlers.go:579
+recentBurstPRsTTL = 2 * time.Hour
+```
+
+After 2 hours, PRs are no longer eligible for rollback (assumed legitimate if not flagged quickly).
+
+## Security Headers & Proxy Protection
+
+### Trusted Proxies: Disabled
+
+From `router.go:134`:
+
+```go
+r.SetTrustedProxies([]string{}) // Use real TCP IP, not proxy headers
+```
+
+<Warning>
+  **Critical for privacy:** gitGost does NOT trust `X-Forwarded-For` or similar headers.
+</Warning>
+
+This prevents:
+- Attackers from spoofing source IPs via proxy headers
+- Bypassing rate limits by injecting fake IPs
+- Correlation attacks via header injection
+
+**Trade-off:** If gitGost runs behind a reverse proxy, `c.ClientIP()` returns the proxy's IP, not the end user's. This is acceptable because:
+1. Rate limiting still works (limits per-proxy-IP)
+2. Real user IP is never logged anyway (privacy by design)
+
+### Anonymous Authentication
+
+Git operations require **no authentication**:
+
+```go
+// router.go:99-105
+func anonymousAuthMiddleware(apiKey string) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // Always allow git-receive-pack without authentication
+        if strings.Contains(c.Request.URL.Path, "git-receive-pack") ||
+           strings.Contains(c.Request.URL.Path, "git-upload-pack") ||
+           strings.Contains(c.Request.URL.Path, "info/refs") {
+            c.Next()
+            return
+        }
+        // Other endpoints require API key (if configured)
+    }
+}
+```
+
+This ensures:
+- No user accounts or registration
+- No credentials to leak
+- True anonymous access
+
+## Summary Table
+
+| Limit Type | Value | Scope | Enforcement |
+|------------|-------|-------|-------------|
+| **Per-IP PR rate** | 5/hour | Per source IP | Sliding window, in-memory |
+| **Push size** | 100 MB | Per push | Middleware, before processing |
+| **Upload size** | 50 MB | Per fetch/pull | Request body limit |
+| **Repo name length** | 1-100 chars | Per request | Validation middleware |
+| **Admin endpoint rate** | 10/min/IP | Per IP | Sliding window |
+| **Rollback rate** | 5/min | Global | Sliding window |
+| **Global burst (total)** | 20/60s | All IPs | Alert only (admin action) |
+| **Global burst (IPs)** | 10/60s | Distinct IPs | Alert only (admin action) |
+
+## Monitoring & Transparency
+
+<CardGroup cols={2}>
+  <Card title="Public Metrics" icon="chart-line" href="https://gitgost.leapcell.app/metrics">
+    Real-time service health (memory, goroutines, uptime)
+  </Card>
+  
+  <Card title="Service Status" icon="heartbeat" href="https://gitgost.leapcell.app/api/status">
+    Check if panic mode is active
+  </Card>
+  
+  <Card title="Total PRs" icon="code-pull-request" href="https://gitgost.leapcell.app/api/stats">
+    Aggregate PR count (no personal data)
+  </Card>
+  
+  <Card title="Recent Activity" icon="clock" href="https://gitgost.leapcell.app/api/recent-prs">
+    Last 10 PRs (owner, repo, URL only)
+  </Card>
+</CardGroup>
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Threat Model" icon="shield-halved" href="/security/threat-model">
+    Attack vectors and mitigations
+  </Card>
+  
+  <Card title="Privacy Guarantees" icon="lock" href="/security/privacy-guarantees">
+    Data retention and logging policies
+  </Card>
+  
+  <Card title="Anonymity Limits" icon="eye" href="/security/anonymity-limits">
+    When gitGost is NOT sufficient
+  </Card>
+  
+  <Card title="Self-Hosting" icon="server" href="/deployment/self-hosting">
+    Run your own instance with custom limits
+  </Card>
+</CardGroup>

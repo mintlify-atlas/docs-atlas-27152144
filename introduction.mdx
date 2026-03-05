@@ -1,0 +1,269 @@
+---
+title: Introduction
+description: Contribute to any GitHub repository without leaving a trace
+---
+
+# Introduction to gitGost
+
+**gitGost** enables developers to contribute to any GitHub repository while maintaining complete anonymity. No accounts, no tokens, no metadata—just pure, anonymous contributions.
+
+## What is gitGost?
+
+gitGost is an open-source proxy service that strips all identifying metadata from Git commits and creates pull requests on your behalf through a neutral bot account (`@gitgost-anonymous`). It's designed for developers who need privacy without sacrificing their ability to contribute to open-source projects.
+
+<Note>
+  gitGost provides **strong anonymity features**, but not perfect anonymity. See the [Threat Model](/security/threat-model) for details on what is and isn't protected.
+</Note>
+
+## Why gitGost Exists
+
+### The Problem
+
+Every Git commit contains identifying metadata that creates a permanent public record:
+
+- **Author name and email** visible in commit history
+- **Timestamp** showing when you worked on the code
+- **GitHub account** linked to pull requests
+- **Contribution graph** revealing your activity patterns
+
+This metadata can be scraped by recruiters, harvested for email campaigns, or used to build profiles of your activity. Sometimes you just want to fix a typo without creating a permanent association with your identity.
+
+### The Solution
+
+gitGost acts as an anonymizing proxy between you and GitHub:
+
+```bash
+# Instead of pushing directly to GitHub
+git push origin my-branch
+
+# Push through gitGost for anonymity
+git remote add gost https://gitgost.leapcell.app/v1/gh/owner/repo
+git push gost my-branch:main
+```
+
+Your contribution appears instantly as a pull request from `@gitgost-anonymous` with no trace back to you.
+
+## Privacy Guarantees
+
+gitGost implements several layers of anonymization:
+
+<Steps>
+  <Step title="Metadata Stripping">
+    All author names, emails, and timestamps are replaced with neutral values:
+    
+    ```go
+    anonSignature := object.Signature{
+        Name:  "@gitgost-anonymous",
+        Email: "anonymous@gitgost.local",
+        When:  time.Now(),
+    }
+    ```
+    
+    *Source: internal/git/receive.go:337-341*
+  </Step>
+  
+  <Step title="Bot-Based PR Creation">
+    Pull requests are created by the `@gitgost-anonymous` bot account, breaking the link between your GitHub identity and the contribution.
+    
+    ```go
+    prBody := fmt.Sprintf("%s\n\n---\n\n*This is an anonymous contribution made via [gitGost](https://gitgost.leapcell.app).*\n\n*The original author's identity has been anonymized to protect their privacy.*", commitMessage)
+    ```
+    
+    *Source: internal/github/pr.go:558*
+  </Step>
+  
+  <Step title="Zero Data Retention">
+    gitGost does not store:
+    - Your commits, blobs, or refs (stream-only processing)
+    - GitHub tokens or access keys
+    - IP addresses or request logs with identifiers
+    - Emails, names, usernames, or SSH fingerprints
+    - Request histories or session metadata
+  </Step>
+  
+  <Step title="Fork-Based Workflow">
+    Contributions are pushed to a temporary fork owned by the bot, then PR'd to the target repository. Forks are periodically cleaned up due to GitHub's repository limits.
+  </Step>
+</Steps>
+
+## What gitGost Protects
+
+gitGost is designed to protect against common identification threats:
+
+<CardGroup cols={2}>
+  <Card title="Public Metadata Exposure" icon="eye-slash">
+    Your name, email, and commit metadata are never visible in the public contribution history.
+  </Card>
+  
+  <Card title="Account Linking" icon="link-slash">
+    No direct association between your personal GitHub account and the PR.
+  </Card>
+  
+  <Card title="Email Harvesting" icon="envelope">
+    Your email address never appears in commit logs or PR metadata.
+  </Card>
+  
+  <Card title="Contribution Tracking" icon="chart-line">
+    Minor contributions don't create permanent records on your profile.
+  </Card>
+</CardGroup>
+
+## What gitGost Does NOT Protect
+
+<Warning>
+  gitGost provides strong anonymity for casual contributors, but it has limitations against determined adversaries.
+</Warning>
+
+### Network-Level Identification
+
+**IP addresses are visible** to both the gitGost server and GitHub. For stronger anonymity, use Tor:
+
+```bash
+torsocks git -c http.extraHeader="X-Gost-Authorship-Confirmed: 1" \
+  push gost my-branch:main
+```
+
+### Code Fingerprinting
+
+- **Stylometry**: Your coding style, variable naming, and comment patterns can reveal identity
+- **Diff analysis**: Unique changes or domain knowledge can be identifying
+- **Temporal correlation**: If you push and the PR appears immediately, observers can correlate timing
+
+### Advanced Adversaries
+
+gitGost does **not** protect against:
+- Nation-states with infrastructure access
+- Actors performing active surveillance
+- Deep forensic code analysis
+- Compromised gitGost operators who add telemetry
+
+## Comparison with Alternatives
+
+| Feature | gitGost | GitHub CLI | Forgejo |
+|---------|---------|------------|----------|
+| **Anonymity** | ✅ Full metadata stripping, neutral bot | ❌ Requires account, full traceability | ⚠️ Depends on instance configuration |
+| **Setup** | ✅ One command: `git remote add` | ❌ Install CLI + authenticate | ❌ Self-host entire instance |
+| **Providers** | ✅ GitHub (GitLab/Bitbucket planned) | ⚠️ GitHub only | ✅ Any self-hosted instance |
+| **Limits** | ⚠️ 5 PRs/IP/hour, 500MB repos, 10MB commits | ⚠️ GitHub API rate limits | ⚠️ Instance-dependent |
+| **Trust Model** | ⚠️ Trust gitGost operator | ⚠️ Trust GitHub | ✅ Self-hosted (no trust needed) |
+
+## Security and Abuse Prevention
+
+gitGost implements multiple protections to prevent abuse while maintaining anonymity:
+
+<CodeGroup>
+```go Rate Limiting
+// Check rate limit per IP (5 PRs/IP/hour)
+if checkRateLimit(ip) {
+    WriteSidebandLine(&errResp, 2, "remote: ")
+    WriteSidebandLine(&errResp, 2, fmt.Sprintf("remote: Rate limit exceeded: max %d PRs per hour per IP.", rateLimitMaxPRs))
+    WriteSidebandLine(&errResp, 2, "remote: Please try again later.")
+    return
+}
+```
+
+```go Size Limits
+// Repository size: ≤ 500 MB
+// Commit size: ≤ 10 MB
+// These limits are enforced during clone and pack processing
+const maxUploadBytes = 50 * 1024 * 1024 // 50 MB
+c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxUploadBytes)
+```
+
+```go Validation
+// Full validation of refs and objects
+if refUpdate == nil {
+    return "", "", "", fmt.Errorf("no ref update found in request")
+}
+
+// Verify packfile format
+if len(packfile) < 4 || !bytes.Equal(packfile[:4], []byte("PACK")) {
+    return nil, nil, "", fmt.Errorf("no packfile found in body")
+}
+```
+</CodeGroup>
+
+*Source: internal/http/handlers.go:160-173*
+
+## Legitimate Use Cases
+
+gitGost is designed for good-faith contributions where identity exposure is unnecessary:
+
+- **Typo fixes** without permanent contribution records
+- **Employer policy conflicts** (contributing to competing/controversial projects)
+- **Political sensitivity** (jurisdictions where certain contributions create risk)
+- **Email privacy** (avoiding scraping and harvesting)
+- **Experimentation** (testing changes without personal attribution)
+- **Geographic risk** (contributions that may create legal exposure)
+
+<Warning>
+  Do **not** use gitGost for harassment, spam, ban evasion, malicious code, or circumventing repository policies. Abuse attempts are rate-limited, validated, and subject to panic mode suspension.
+</Warning>
+
+## How It Works (High-Level)
+
+<Steps>
+  <Step title="You push to gitGost">
+    ```bash
+    git push gost my-branch:main
+    ```
+    
+    Your Git client sends commits to gitGost's server using the standard Git Smart HTTP protocol.
+  </Step>
+  
+  <Step title="gitGost processes the push">
+    - Receives the packfile containing your commits
+    - Clones the target repository from GitHub
+    - Unpacks your commits into a temporary directory
+    - Rewrites commit metadata to anonymize author, email, and timestamps
+  </Step>
+  
+  <Step title="Fork and push">
+    - Creates (or reuses) a fork of the target repository under the `@gitgost-anonymous` account
+    - Pushes the anonymized commits to a uniquely-named branch
+  </Step>
+  
+  <Step title="PR creation">
+    - Opens a pull request from the bot's fork to the original repository
+    - Uses your commit message as the PR description
+    - Returns the PR URL to your Git client
+  </Step>
+</Steps>
+
+For technical details on the Git Smart HTTP protocol and metadata stripping, see [How It Works](/how-it-works).
+
+## Open Source and Auditable
+
+gitGost is **100% open source** under the AGPL-3.0 license:
+
+- **Full transparency**: Every line of code is public and auditable
+- **Self-hostable**: Run your own instance if you don't trust the public service
+- **Copyleft protection**: Any public instance must provide source code
+
+View the source code: [github.com/livrasand/gitGost](https://github.com/livrasand/gitGost)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get started with your first anonymous contribution in under 60 seconds
+  </Card>
+  
+  <Card title="How It Works" icon="gears" href="/how-it-works">
+    Deep dive into the Git Smart HTTP protocol and metadata stripping
+  </Card>
+  
+  <Card title="Threat Model" icon="shield-halved" href="/threat-model">
+    Understand what gitGost protects against and its limitations
+  </Card>
+  
+  <Card title="Self-Hosting" icon="server" href="/deployment/requirements">
+    Run your own gitGost instance for maximum control
+  </Card>
+</CardGroup>
+
+---
+
+<Tip>
+  **Privacy first, always.** gitGost stores no personal data, logs no IPs, and retains no commit history. Less data = less risk.
+</Tip>

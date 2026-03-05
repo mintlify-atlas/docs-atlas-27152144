@@ -1,0 +1,411 @@
+---
+title: Anonymity Limits
+description: When gitGost is NOT sufficient—IP visibility, code style analysis, and temporal correlation
+---
+
+gitGost provides **practical anonymity** for most open-source contributors, but it is **not a perfect anonymity tool**. This page details the scenarios where gitGost's protections are insufficient.
+
+<Warning>
+  **Critical:** Read this before relying on gitGost for high-risk contributions.
+</Warning>
+
+## When gitGost is NOT Sufficient
+
+<CardGroup cols={2}>
+  <Card title="State-Level Adversaries" icon="globe">
+    gitGost cannot protect against nation-state actors with network surveillance capabilities.
+  </Card>
+  
+  <Card title="Whistleblowing" icon="bullhorn">
+    Use dedicated tools like SecureDrop, not gitGost.
+  </Card>
+  
+  <Card title="Legal Exposure" icon="gavel">
+    If deanonymization has legal consequences, gitGost is insufficient.
+  </Card>
+  
+  <Card title="Targeted Investigations" icon="magnifying-glass">
+    Determined adversaries with resources can correlate timing, style, and network data.
+  </Card>
+</CardGroup>
+
+## IP Visibility and Network Exposure
+
+### The Problem
+
+**gitGost does not hide your IP address by itself.** GitHub and the gitGost operator can see the source IP of your connection if you push directly.
+
+<Warning>
+  **Without VPN/Tor, your IP is exposed to:**
+  - The gitGost operator (via TCP connection)
+  - GitHub (via gitGost's outbound connection, revealing operator IP, not yours—but timing correlation can still apply)
+  - Your ISP (can see you connected to gitGost)
+  - Network observers (if not using HTTPS, though gitGost uses HTTPS)
+</Warning>
+
+### The Solution: Tor or Trustworthy VPN
+
+<Steps>
+  <Step title="Use Tor Browser or Tor-enabled Git">
+    Route git traffic through Tor to anonymize your IP:
+    ```bash
+    # Via Tor SOCKS proxy
+    git config --global http.proxy socks5h://127.0.0.1:9050
+    git push gost main
+    ```
+  </Step>
+  
+  <Step title="Or Use a Trustworthy VPN">
+    Choose a VPN provider with:
+    - **No-logs policy** (audited, not just claimed)
+    - **Anonymous payment** (crypto, cash)
+    - **No email registration**
+    
+    Examples: Mullvad, ProtonVPN (paid), IVPN
+  </Step>
+  
+  <Step title="Verify Your IP is Hidden">
+    Before pushing, confirm your IP is masked:
+    ```bash
+    curl https://api.ipify.org
+    # Should show VPN/Tor exit node IP, not your real IP
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  **Network metadata:** Even with Tor/VPN, the gitGost operator can see:
+  - You connected at a specific time
+  - The size of your push
+  - The target repository
+  
+  They **cannot** see your real IP, but timing correlation is still possible.
+</Note>
+
+## Code Style Analysis
+
+### The Problem
+
+gitGost strips metadata (name, email, timestamp) but **cannot strip your coding style**. Experienced maintainers or automated tools can attribute code based on:
+
+<AccordionGroup>
+  <Accordion title="Variable Naming Conventions" icon="code">
+    - Consistent use of `ctx` vs `context` vs `c` for context variables
+    - Preference for `err` vs `error` vs `e`
+    - Specific abbreviation patterns (e.g., `usr` vs `user`, `msg` vs `message`)
+  </Accordion>
+  
+  <Accordion title="Error Handling Patterns" icon="triangle-exclamation">
+    - Specific error message formats ("failed to X: %v" vs "X failed: %v")
+    - Use of `fmt.Errorf` vs `errors.New`
+    - Wrapping vs returning errors directly
+  </Accordion>
+  
+  <Accordion title="Code Structure" icon="sitemap">
+    - Preference for early returns vs nested if/else
+    - Consistent use of guard clauses
+    - Specific function ordering patterns
+  </Accordion>
+  
+  <Accordion title="Comments & Documentation" icon="comment">
+    - Language patterns (British vs American English)
+    - Emoji usage in comments
+    - Level of detail in docstrings
+  </Accordion>
+  
+  <Accordion title="Testing Style" icon="flask">
+    - Table-driven tests vs individual test functions
+    - Specific assertion patterns
+    - Mock usage and setup style
+  </Accordion>
+</AccordionGroup>
+
+### Real Example
+
+```go
+// Your usual style (identifiable)
+func processUser(ctx context.Context, userId int64) error {
+    usr, err := db.GetUser(ctx, userId)
+    if err != nil {
+        return fmt.Errorf("failed to fetch user: %w", err)
+    }
+    // ...
+}
+
+// Anonymous style (generic)
+func processUser(c context.Context, id int64) error {
+    user, e := db.GetUser(c, id)
+    if e != nil {
+        return e // Less distinctive error wrapping
+    }
+    // ...
+}
+```
+
+### The Solution: Conscious Style Variation
+
+<Steps>
+  <Step title="Study the Target Project's Style">
+    Match the existing codebase patterns:
+    ```bash
+    # Analyze variable naming in the target repo
+    git clone https://github.com/target/repo
+    grep -r "context\.Context" . | head -20
+    ```
+  </Step>
+  
+  <Step title="Use Generic Patterns">
+    - Follow language idioms strictly (e.g., Go's `Effective Go`)
+    - Avoid personal idioms or "clever" code
+    - Use standard library patterns over custom abstractions
+  </Step>
+  
+  <Step title="Write Neutral Commit Messages">
+    Avoid:
+    - Emoji (unless common in the target repo)
+    - Personal phrases ("I think", "IMHO")
+    - Consistent formatting quirks (always capitalizing types, etc.)
+    
+    Use:
+    - Imperative mood: "Fix bug" not "Fixed bug" or "Fixes bug"
+    - Generic descriptions: "Update documentation" not "Improve docs readability"
+  </Step>
+</Steps>
+
+<Warning>
+  **Automated stylometry tools exist.** Research has shown that code authorship can be attributed with 90%+ accuracy using machine learning on style features.
+  
+  References:
+  - ["De-anonymizing Programmers via Code Stylometry"](https://www.usenix.org/conference/usenixsecurity15/technical-sessions/presentation/caliskan-islam) (USENIX Security '15)
+  - ["When Coding Style Survives Compilation"](https://arxiv.org/abs/1512.08546) (NDSS '18)
+</Warning>
+
+## Temporal Correlation
+
+### The Problem
+
+An observer who monitors **both** your activity and the target repository can correlate based on timing:
+
+1. You mention working on a feature at 3:45 PM (e.g., in another community)
+2. An anonymous PR for that feature appears at 3:47 PM
+3. Observer links the two events
+
+### Attack Scenarios
+
+<AccordionGroup>
+  <Accordion title="Low-Traffic Services" icon="hourglass">
+    If gitGost has few concurrent users, your push time uniquely identifies you:
+    - Push at 2:13 AM → PR created at 2:13 AM
+    - No other PRs in ±10 minutes
+    - Obvious correlation
+  </Accordion>
+  
+  <Accordion title="Public Activity Correlation" icon="calendar">
+    Observer monitors your GitHub activity:
+    - Your main account last active: 11:34 PM
+    - Anonymous PR created: 11:36 PM
+    - Both in US Eastern timezone
+    - Correlation over multiple occurrences reveals pattern
+  </Accordion>
+  
+  <Accordion title="Low-Activity Target Repos" icon="inbox">
+    Repos with few contributors:
+    - Project receives 1 PR every 2 weeks
+    - You push anonymously same day you discuss the issue in Discord
+    - Timing + context reveals authorship
+  </Accordion>
+</AccordionGroup>
+
+### The Solution: Timing Obfuscation
+
+<Steps>
+  <Step title="Batch Pushes">
+    Wait to accumulate multiple PRs, push all at once:
+    ```bash
+    # Instead of pushing immediately
+    git push gost feat-1
+    
+    # Wait days/weeks, then batch
+    git push gost feat-1
+    git push gost feat-2
+    git push gost fix-typo
+    ```
+  </Step>
+  
+  <Step title="Add Random Delays">
+    Script delays into your workflow:
+    ```bash
+    #!/bin/bash
+    # Random delay between 1-6 hours
+    sleep $((3600 + RANDOM % 18000))
+    git push gost main
+    ```
+  </Step>
+  
+  <Step title="Use Scheduled Pushes">
+    Push at fixed, generic times:
+    ```bash
+    # Every Saturday at 10 AM UTC via cron
+    0 10 * * 6 cd /path/to/repo && git push gost main
+    ```
+  </Step>
+  
+  <Step title="Vary Timezone Appearance">
+    Push at times inconsistent with your known timezone:
+    - If you're in US Eastern, push during EU working hours
+    - Randomize to avoid establishing a new pattern
+  </Step>
+</Steps>
+
+<Note>
+  **Operator-side jitter:** Some gitGost operators may add server-side delays or queuing. Check the operator's transparency policy. The official instance at `gitgost.leapcell.app` processes immediately (minimal jitter).
+</Note>
+
+## Small PR Attribution in Low-Activity Projects
+
+### The Problem
+
+Small, unique PRs are inherently attributable:
+
+- **Example:** 1-line typo fix in a README that receives 2 PRs/year
+- **Context:** You reported the typo in an issue 3 days ago
+- **Result:** Obvious you're the contributor, anonymity ineffective
+
+### The Solution
+
+<Check>**gitGost is best suited for:**</Check>
+- Active projects with regular contributions
+- Non-trivial PRs (features, refactors) that blend in
+- Repos where multiple contributors work concurrently
+
+<Warning>**Avoid using gitGost for:**</Warning>
+- Tiny typo fixes in low-activity repos
+- PRs to repos you maintain or frequently contribute to publicly
+- Unique features you've discussed publicly under your real identity
+
+## Private Repositories
+
+<Warning>
+  **gitGost is designed for public repositories only.**
+</Warning>
+
+**Why private repos are problematic:**
+
+1. **Operator knows which private repos you're contributing to** (exposes project context)
+2. **GitHub sees your fork of a private repo** (requires authentication, harder to anonymize)
+3. **Fewer contributors = easier correlation**
+
+**Solution:** Use gitGost only for public repositories. For private repos, use established team processes with your real identity.
+
+## Hostile Operators
+
+### The Problem
+
+A malicious operator could:
+- Log IP addresses (despite policy claiming otherwise)
+- Add hidden telemetry
+- Correlate push timing with other data sources
+- Keep detailed records for later analysis
+
+### The Solution: Trust or Self-Host
+
+<AccordionGroup>
+  <Accordion title="Use a Trusted Operator" icon="handshake">
+    Operators with:
+    - **Public privacy policy** (specific, not vague)
+    - **Open-source deployment** (auditable)
+    - **Transparency reports** (published stats)
+    - **Reputation in community**
+  </Accordion>
+  
+  <Accordion title="Self-Host gitGost" icon="server">
+    Run your own instance:
+    ```bash
+    git clone https://github.com/livrasand/gitGost
+    cd gitGost
+    # Configure environment (see deployment docs)
+    go run cmd/server/main.go
+    ```
+    
+    **Pros:** Complete control, no operator trust required
+    
+    **Cons:** Your server IP is visible to GitHub (use VPN/proxy at server level)
+  </Accordion>
+  
+  <Accordion title="Verify Open Source" icon="code">
+    Audit the code yourself:
+    - Check `router.go:129-136` for disabled logging
+    - Verify `handlers.go` doesn't log IPs
+    - Review database schema for personal data
+    
+    Open source ≠ automatic trust, but enables verification.
+  </Accordion>
+</AccordionGroup>
+
+## Platform-Level Attacks
+
+### Out of Scope Threats
+
+gitGost **cannot** protect against:
+
+1. **GitHub compromise** (attacker gains access to GitHub's servers)
+2. **MITM attacks** (attacker intercepts HTTPS traffic via certificate compromise)
+3. **Operator infrastructure breach** (attacker gains root on gitGost server and patches running binary)
+4. **Side-channel attacks** (timing attacks on GitHub API, DNS correlation, etc.)
+
+<Warning>
+  These are **inherent limitations of any hosted service.** If your threat model includes these scenarios, consider:
+  - Cryptographic signing with offline keys
+  - Air-gapped systems
+  - Specialized tools designed for high-risk scenarios (e.g., Qubes OS, Tails)
+</Warning>
+
+## Summary: Is gitGost Right for You?
+
+<Card title="gitGost is SUITABLE for:" icon="check">
+  - Contributing to public open-source projects without linking to your GitHub account
+  - Avoiding employer/institutional attribution
+  - Protecting against casual deanonymization
+  - Separating personal and professional identities
+</Card>
+
+<Card title="gitGost is NOT suitable for:" icon="xmark">
+  - Whistleblowing or high-risk leaks (use SecureDrop, Tor-only platforms)
+  - Evading state-level surveillance
+  - Contributing to CLA-required projects
+  - Scenarios where deanonymization has severe legal consequences
+  - Private repositories
+</Card>
+
+## Threat Model Quick Reference
+
+| Threat | gitGost Protection | Additional Steps Required |
+|--------|-------------------|---------------------------|
+| **IP exposure** | ❌ None | ✅ Use Tor/VPN |
+| **Code style attribution** | ❌ None | ✅ Vary style, match target repo |
+| **Temporal correlation** | ⚠️ Partial (immediate processing) | ✅ Add delays, batch pushes |
+| **Metadata exposure** | ✅ Full (name, email, timestamp stripped) | ❌ None |
+| **GitHub account linking** | ✅ Full (PRs from `@gitgost-anonymous`) | ❌ None |
+| **Commit history tracking** | ✅ Full (stateless, stream-only) | ❌ None |
+| **Hostile operator** | ⚠️ Depends on operator | ✅ Self-host or verify open source |
+| **State-level adversary** | ❌ None | ⛔ Use specialized tools |
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Threat Model" icon="shield-halved" href="/security/threat-model">
+    Detailed attack vectors and mitigations
+  </Card>
+  
+  <Card title="Privacy Guarantees" icon="lock" href="/security/privacy-guarantees">
+    What data is stored and retained
+  </Card>
+  
+  <Card title="Best Practices" icon="book" href="/guides/best-practices">
+    Operational security tips for contributors
+  </Card>
+  
+  <Card title="Self-Hosting" icon="server" href="/deployment/self-hosting">
+    Run your own gitGost instance
+  </Card>
+</CardGroup>

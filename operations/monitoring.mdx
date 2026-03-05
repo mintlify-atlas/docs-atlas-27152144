@@ -1,0 +1,311 @@
+---
+title: Monitoring
+description: Monitor gitGost service health, metrics, and logs
+icon: chart-line
+---
+
+# Monitoring gitGost
+
+Monitor your gitGost instance to ensure healthy operation and detect issues early.
+
+## Health Check Endpoint
+
+The `/health` endpoint provides service status and build information.
+
+### Check Service Health
+
+```bash
+curl https://gitgost.leapcell.app/health
+```
+
+**Response:**
+
+```json
+{
+  "status": "healthy",
+  "deployedCommit": "a3f7b9c",
+  "deployedAt": "2024-03-05T10:30:00Z",
+  "sourceRepo": "https://github.com/livrasand/gitGost",
+  "leapcell": true,
+  "goVersion": "go1.21.5",
+  "verify": {
+    "github": "https://github.com/livrasand/gitGost/commit/a3f7b9c",
+    "source": "100% open source - auditable"
+  }
+}
+```
+
+<Tip>
+The `verify.github` URL allows you to audit the exact source code running on the server. This ensures transparency and builds trust.
+</Tip>
+
+### Health Check Integration
+
+<Steps>
+  <Step title="Add to monitoring dashboard">
+    Configure your monitoring tool (Prometheus, Datadog, etc.) to poll `/health` every 30-60 seconds.
+  </Step>
+  
+  <Step title="Set up alerts">
+    Alert when:
+    - `/health` returns non-200 status
+    - Response time exceeds 5 seconds
+    - Service becomes unreachable
+  </Step>
+  
+  <Step title="Verify deployments">
+    After deploying, check the `deployedCommit` matches your expected commit hash.
+  </Step>
+</Steps>
+
+## Metrics Endpoint
+
+The `/metrics` endpoint exposes runtime metrics for performance monitoring.
+
+### Fetch Metrics
+
+```bash
+curl https://gitgost.leapcell.app/metrics
+```
+
+**Response:**
+
+```json
+{
+  "memory": {
+    "alloc": 4567890,
+    "total_alloc": 123456789,
+    "sys": 23456789,
+    "num_gc": 42
+  },
+  "goroutines": 15,
+  "uptime": "12h34m56s"
+}
+```
+
+### Key Metrics
+
+| Metric | Description | Normal Range |
+|--------|-------------|-------------|
+| `memory.alloc` | Current heap allocation (bytes) | < 100 MB |
+| `memory.num_gc` | Number of GC cycles | Increases over time |
+| `goroutines` | Active goroutines | < 100 (idle), < 500 (busy) |
+| `uptime` | Time since service started | N/A |
+
+<Warning>
+**High Memory Alert**: If `memory.alloc` exceeds 500 MB consistently, investigate for memory leaks or consider scaling.
+</Warning>
+
+## Service Status Endpoint
+
+The `/api/status` endpoint shows if the panic button is active.
+
+```bash
+curl https://gitgost.leapcell.app/api/status
+```
+
+**Response:**
+
+```json
+{
+  "panic_mode": false
+}
+```
+
+- `panic_mode: false` → Service accepting pushes normally
+- `panic_mode: true` → Service suspended (panic button activated)
+
+## Logging System
+
+GitGost uses privacy-focused logging that minimizes user data exposure.
+
+### Log Format
+
+Configure log format via the `LOG_FORMAT` environment variable:
+
+```bash
+# Text format (default)
+LOG_FORMAT=text
+
+# JSON format (structured)
+LOG_FORMAT=json
+```
+
+### Text Format Logs
+
+```
+[gitGost] 2024/03/05 10:30:45 Privacy mode: Minimal logging enabled
+[gitGost] 2024/03/05 10:30:45 Server started - Ready for anonymous contributions
+[gitGost] 2024/03/05 10:35:12 Received push for owner/repo, size: 2048 bytes
+[gitGost] 2024/03/05 10:35:15 Fork ready: gitgost-anonymous/repo
+[gitGost] 2024/03/05 10:35:18 Created PR: https://github.com/owner/repo/pull/42
+```
+
+### JSON Format Logs
+
+```json
+{"timestamp":"2024-03-05T10:30:45Z","level":"info","message":"Privacy mode: Minimal logging enabled","privacy":"anonymized"}
+{"timestamp":"2024-03-05T10:30:45Z","level":"info","message":"Server started - Ready for anonymous contributions","privacy":"anonymized"}
+{"timestamp":"2024-03-05T10:35:12Z","level":"info","message":"Received push for owner/repo, size: 2048 bytes","privacy":"anonymized"}
+```
+
+### Log Privacy Features
+
+From `internal/utils/logging.go`:
+
+<Accordion title="Privacy-First Logging Design">
+- **No IP addresses** logged in push operations
+- **No user metadata** captured or stored
+- **Minimal context** to prevent correlation attacks
+- All logs tagged with `"privacy": "anonymized"`
+- Logs focus on service health, not user activity
+</Accordion>
+
+<Warning>
+**Privacy Notice**: GitGost logs are designed to protect user anonymity. Do **not** add custom logging that captures IP addresses, user agents, or timing patterns that could deanonymize users.
+</Warning>
+
+## Alert Configuration
+
+### Recommended Alerts
+
+<Steps>
+  <Step title="Service Down">
+    **Trigger**: `/health` endpoint returns non-200 or times out
+    
+    **Action**: Immediate investigation required
+    
+    ```bash
+    # Example healthcheck script
+    if ! curl -sf https://gitgost.leapcell.app/health > /dev/null; then
+      echo "ALERT: gitGost service is down!"
+      # Send alert notification
+    fi
+    ```
+  </Step>
+  
+  <Step title="High Memory Usage">
+    **Trigger**: `memory.alloc` > 500 MB for 5+ minutes
+    
+    **Action**: Check for memory leaks, restart if necessary
+  </Step>
+  
+  <Step title="Panic Mode Activated">
+    **Trigger**: `/api/status` returns `panic_mode: true`
+    
+    **Action**: Administrator intervention required (abuse detected)
+  </Step>
+  
+  <Step title="Rate Limit Exceeded">
+    **Trigger**: Multiple rate limit alerts from ntfy admin notifications
+    
+    **Action**: Review IP patterns, consider temporary panic mode
+  </Step>
+</Steps>
+
+### ntfy Admin Notifications
+
+GitGost sends real-time alerts via [ntfy](https://ntfy.sh) when configured.
+
+**Configure ntfy alerts:**
+
+```bash
+# Set environment variables
+export NTFY_ADMIN_TOPIC="your-secret-admin-topic"
+export PANIC_PASSWORD="your-secure-password"
+```
+
+**Alert types:**
+
+- **Rate limit exceeded**: Single IP exceeds 5 PRs/hour
+- **Suspicious burst activity**: 20+ pushes from 10+ IPs in 60 seconds
+- **Service control**: Action buttons to activate/deactivate panic mode
+
+<Tip>
+Subscribe to your admin topic on your phone using the [ntfy app](https://ntfy.sh) for instant push notifications:
+
+```bash
+https://ntfy.sh/your-secret-admin-topic
+```
+</Tip>
+
+## Log Analysis Examples
+
+### Find Recent Errors
+
+```bash
+# Text format
+grep "ERROR:" app.log | tail -n 20
+
+# JSON format
+jq 'select(.level == "error")' app.log | tail -n 20
+```
+
+### Count PR Creation Events
+
+```bash
+# Text format
+grep "Created PR:" app.log | wc -l
+
+# JSON format
+jq 'select(.message | contains("Created PR:"))' app.log | wc -l
+```
+
+### Monitor Fork Creation Rate
+
+```bash
+# Track fork operations over time
+grep "Fork ready:" app.log | awk '{print $1, $2}' | uniq -c
+```
+
+## Deployment Verification
+
+Verify deployments match the source code:
+
+<Steps>
+  <Step title="Fetch deployed commit">
+    ```bash
+    DEPLOYED_COMMIT=$(curl -s https://gitgost.leapcell.app/health | jq -r '.deployedCommit')
+    echo "Deployed commit: $DEPLOYED_COMMIT"
+    ```
+  </Step>
+  
+  <Step title="Compare with GitHub">
+    ```bash
+    git fetch origin
+    git log --oneline origin/main | grep "$DEPLOYED_COMMIT"
+    ```
+  </Step>
+  
+  <Step title="Verify source transparency">
+    Visit the GitHub verification URL:
+    ```bash
+    curl -s https://gitgost.leapcell.app/health | jq -r '.verify.github'
+    # Open in browser to audit source code
+    ```
+  </Step>
+</Steps>
+
+## Monitoring Best Practices
+
+<Card title="Production Monitoring Checklist" icon="check">
+  - ✅ Health checks running every 30-60 seconds
+  - ✅ Memory metrics tracked and alerted
+  - ✅ Panic mode status monitored
+  - ✅ ntfy admin notifications configured
+  - ✅ Log aggregation set up (if using JSON format)
+  - ✅ Uptime SLA tracking enabled
+  - ✅ Deployment verification automated
+</Card>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Moderation" icon="gavel" href="/operations/moderation">
+    Learn how to moderate abuse and use the panic button
+  </Card>
+  
+  <Card title="Troubleshooting" icon="wrench" href="/operations/troubleshooting">
+    Diagnose and fix common operational issues
+  </Card>
+</CardGroup>
