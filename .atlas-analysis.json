@@ -1,0 +1,131 @@
+{
+  "projectType": "api-service",
+  "projectName": "gitGost",
+  "projectDescription": "Anonymous Git contributions to any GitHub repository without accounts, tokens, or metadata traces.",
+  "theme": "aspen",
+  "primaryColor": "#59316b",
+  "lightColor": "#8B5A9E",
+  "darkColor": "#3D1F4A",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "how-it-works"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/basic-usage",
+              "guides/anonymous-push",
+              "guides/tor-integration",
+              "guides/commit-messages"
+            ]
+          },
+          {
+            "group": "Privacy & Security",
+            "pages": [
+              "security/threat-model",
+              "security/privacy-guarantees",
+              "security/anonymity-limits",
+              "security/rate-limits"
+            ]
+          },
+          {
+            "group": "Use Cases",
+            "pages": [
+              "use-cases/legitimate-uses",
+              "use-cases/when-not-to-use",
+              "use-cases/examples"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Git Protocol",
+            "pages": [
+              "api/git-smart-http",
+              "api/receive-pack",
+              "api/upload-pack"
+            ]
+          },
+          {
+            "group": "Anonymous Operations",
+            "pages": [
+              "api/anonymous-pr",
+              "api/anonymous-issues",
+              "api/anonymous-comments"
+            ]
+          },
+          {
+            "group": "Public Endpoints",
+            "pages": [
+              "api/stats",
+              "api/badges",
+              "api/health"
+            ]
+          },
+          {
+            "group": "Admin",
+            "pages": [
+              "api/admin/panic-mode",
+              "api/admin/rollback"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Self-Hosting",
+        "groups": [
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/requirements",
+              "deployment/configuration",
+              "deployment/docker",
+              "deployment/environment-variables"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/monitoring",
+              "operations/moderation",
+              "operations/troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Total anonymity - strips author name, email, timestamps, and metadata",
+    "One-command setup - no accounts, tokens, or browser extensions required",
+    "Git Smart HTTP protocol support for push and pull operations",
+    "Battle-tested security with rate limiting and validation",
+    "Anonymous pull requests via neutral @gitgost-anonymous bot",
+    "Tor network integration for enhanced IP privacy",
+    "Open source AGPL-3.0 license - fully auditable"
+  ],
+  "publicApiSurface": [
+    "POST /v1/gh/:owner/:repo/git-receive-pack - Anonymous push",
+    "POST /v1/gh/:owner/:repo/git-upload-pack - Anonymous fetch",
+    "GET /v1/gh/:owner/:repo/info/refs - Git protocol discovery",
+    "POST /v1/gh/:owner/:repo/issues/anonymous - Create anonymous issue",
+    "POST /v1/gh/:owner/:repo/issues/:number/comments/anonymous - Add anonymous comment",
+    "GET /api/stats - Service statistics",
+    "GET /badges/:badge - Anonymous-friendly badges",
+    "GET /health - Service health check",
+    "POST /admin/panic - Emergency service suspension",
+    "POST /admin/rollback - Close abusive PRs"
+  ]
+}
