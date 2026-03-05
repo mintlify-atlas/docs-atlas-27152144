@@ -94,7 +94,7 @@ func ReceivePackHandler(c *gin.Context) {
 
 Git uses a framing protocol called **pkt-line** to transmit data. Each line is prefixed with a 4-byte hexadecimal length:
 
-```
+```text
 0032git-upload-pack /project.git\0host=example.com\0
 0000
 ```
@@ -814,7 +814,7 @@ View the full source: [github.com/livrasand/gitGost](https://github.com/livrasan
     Run your own gitGost instance
   </Card>
   
-  <Card title="API Reference" icon="code" href="/api-reference">
+  <Card title="API Reference" icon="code" href="/api/git-smart-http">
     Complete API documentation
   </Card>
 </CardGroup>
